@@ -10,6 +10,8 @@ LINE_SINGLE_LINE_TAG = 3
 gap_count = 0
 gap = "  "
 
+ast_line_type = this_line_type = LINE_OTHER
+
 def write_to_output(output_file, input_line):
     for i in range(0, gap_count):
         output_file.write(gap)
