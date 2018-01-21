@@ -32,7 +32,7 @@ if not os.path.isfile(sys.argv[1]):
     sys.exit(1)
 
 with open(sys.argv[1], "r") as input_file:
-    with open(sys.argv[1][0:-4] + "_output.ofx", "w") as output_file:
+    with open(sys.argv[1][0:-4] + "_indent.ofx", "w") as output_file:
         while True:
             input_line = input_file.readline()
             if input_line == "": # is None or input_line is False:
