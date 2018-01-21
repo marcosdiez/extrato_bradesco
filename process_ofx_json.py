@@ -1,13 +1,39 @@
 #!/usr/bin/env python
 from collections import OrderedDict, defaultdict
+import collections
 import os
 import json
 import sys
 import datetime
+import codecs
 
-data2 = json.load(open(sys.argv[1]), object_pairs_hook=OrderedDict)
+data2 = json.load(codecs.open(sys.argv[1], "r", "utf-8"), object_pairs_hook=OrderedDict)
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
 statements = data["BANKTRANLIST"]["STMTTRN"]
+
+class OrderedDefaultdict(collections.OrderedDict):
+    """ A defaultdict with OrderedDict as its base class. """
+
+    def __init__(self, default_factory=None, *args, **kwargs):
+        if not (default_factory is None
+                or isinstance(default_factory, collections.Callable)):
+            raise TypeError('first argument must be callable or None')
+        super(OrderedDefaultdict, self).__init__(*args, **kwargs)
+        self.default_factory = default_factory  # called by __missing__()
+
+    def __missing__(self, key):
+        if self.default_factory is None:
+            raise KeyError(key,)
+        self[key] = value = self.default_factory()
+        return value
+
+    def __reduce__(self):  # optional, for pickle support
+        args = (self.default_factory,) if self.default_factory else tuple()
+        return self.__class__, args, None, None, self.iteritems()
+
+    def __repr__(self):  # optional
+        return '%s(%r, %r)' % (self.__class__.__name__, self.default_factory,
+                               list(self.iteritems()))
 
 from json import JSONEncoder
 class MyEncoder(JSONEncoder):
@@ -72,8 +98,8 @@ class StatementPeriod(object):
         self.total_credit = 0
         self.total_debit = 0
         self.delta = 0
-        self.credits = defaultdict(StatementMemo)
-        self.debits = defaultdict(StatementMemo)
+        self.credits = OrderedDefaultdict(StatementMemo)
+        self.debits = OrderedDefaultdict(StatementMemo)
 
     def add_statement_item(self, item):
         self.delta += item.amount
@@ -90,7 +116,7 @@ class Statement(object):
         self.account_id = account_id
         self.account_type = account_type
         self.total = StatementPeriod()
-        self.periods = defaultdict(StatementPeriod)
+        self.periods = OrderedDefaultdict(StatementPeriod)
         self.first_statement = None
         self.last_statement = None
 
@@ -107,7 +133,7 @@ class Statement(object):
     def to_json(self):
         return json.dumps(self, sort_keys=True, indent=2, cls=MyEncoder)
 
-    def to_csv(self):
+    def to_csv_mensal(self):
         forma = "'{periodo}{sep}{entrada}{sep}{saida}{sep}{delta}{lf}"
         output = ""
         sep = ","
@@ -125,6 +151,29 @@ class Statement(object):
                                    saida=item.total_debit,
                                    delta=item.delta)
         return output
+
+    def to_csv_grouped(self):
+        #periodo	evento	quantidade	debito	credito
+
+        forma = u"'{periodo}{sep}{descricao}{sep}{quantidade}{sep}{debito}{sep}{credito}{lf}"
+        sep = ","
+        lf = "\n"
+
+        output = "periodo{sep}descricao{sep}quantidade{sep}debito{sep}credito{lf}".format(lf=lf,sep=sep)
+
+        for period_name in self.periods:
+            statement_period = self.periods[period_name]
+            for name in statement_period.credits:
+                statement_memo = statement_period.credits[name]
+                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=name, quantidade=statement_memo.count,
+                                       debito="", credito=statement_memo.total)
+            for name in statement_period.debits:
+                statement_memo = statement_period.debits[name]
+                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=name, quantidade=statement_memo.count,
+                                       credito="", debito=statement_memo.total)
+
+        return output
+
 
 inputs = {
     "TRNTYPE": defaultdict(lambda: 0),
@@ -145,10 +194,13 @@ for item in statements:
     # print(x.get_period())
 
 # print json.dumps(inputs, sort_keys=True, indent=2)
-with open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_processed.json", "w") as output_file:
+with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_processed.json", "w", "utf-8") as output_file:
     output_file.write(output.to_json())
 
-with open(sys.argv[1][0:sys.argv[1].rfind(".")] + ".csv", "w") as output_file:
-    output_file.write(output.to_csv())
+with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_mensal.csv", "w", "utf-8") as output_file:
+    output_file.write(output.to_csv_mensal())
+
+with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_grouped.csv", "w", "utf-8") as output_file:
+    output_file.write(output.to_csv_grouped())
 
 print("Done")
