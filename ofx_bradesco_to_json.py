@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import codecs
 from collections import OrderedDict
 
 LINE_OTHER = 0
@@ -34,7 +35,8 @@ dict_list = [target_json]
 
 input_file_name = sys.argv[1]
 
-with open(sys.argv[1], "r") as input_file:
+#with open(sys.argv[1], "r") as input_file:
+with codecs.open(sys.argv[1], 'r', 'iso-8859-1') as input_file:
     while True:
         input_line = input_file.readline()
         if input_line == "": # is None or input_line is False:
@@ -90,6 +92,6 @@ else:
     target_file = sys.argv[2]
 
 result = json.dumps(target_json, indent=2) #, sort_keys=True)
-print result
+
 with open(target_file, "w") as output_file:
     output_file.write(result)
