@@ -11,6 +11,41 @@ data2 = json.load(codecs.open(sys.argv[1], "r", "utf-8"), object_pairs_hook=Orde
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
 statements = data["BANKTRANLIST"]["STMTTRN"]
 
+memos_to_ignore = [
+    "Baixa Automatica Fundos",
+    "bx Autom Fundos",
+    "Aplicacao Fundo Ficfirf di Special",
+    "Estorno Lancto* Ficfirf di Special",
+    "APLICACAO EM FUNDOS B. FIC FI RF MACRO",
+    "BX AUTOMATICA APLICACOES",
+    "BAIXA AUTOMAT POUPANCA*",
+    "BAIXA AUTOMATICA FUNDOS",
+    "RESGATE FUNDOS FIC FI R.FIXA MARTE",
+    "ESTORNO DE LANCAMENTO* B. FIC FI RF MACRO"
+    ]
+
+memos_to_only_care_about_the_prefix = [
+    "TARIFA REGISTRO COBRANCA QUANDO DO REGISTRO",
+    "CONTA DE GAS COMGAS/SP",
+    "TAR COMANDADA COBRANCA POR MOTIVO DE DEVOLUCAO",
+    "CONTA DE LUZ ELETROPAULO/SP",
+    "DOC/TED INTERNET"
+    ]
+
+memos_to_replace = {
+    "TRANSF CC PARA CC PJ GENILDO DE OLIVEIRA CRUZ" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CC PJ GILDEMAR FERREIRA S" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CC PJ JOAO RODRIGUES" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CC PJ VALDEIR BRAZ DE SOUZA" : "SALARIO DE FUNCIONARIO",
+    "TED DIF.TITUL.CC H.BANK DEST. JOSINALDO ALEXANDRE" : "SALARIO DE FUNCIONARIO",
+    "TED DIF.TITUL.CC H.BANK DEST. Josinaldo  Alexandre": "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CP PJ SEBASTIAO  RODRIGUES  DE S" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CP PJ VANDERLEI PEREIRA DOURADO" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CC PJ ZITA DE OLIVEIRA PENNA" : "SINDICO",
+    "TRANSF FDOS DOC-E H BANK DEST.Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
+    "TED DIF.TITUL.CC H.BANK DEST. Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
+}
+
 class OrderedDefaultdict(collections.OrderedDict):
     """ A defaultdict with OrderedDict as its base class. """
 
@@ -140,10 +175,8 @@ class Statement(object):
         lf = "\n"
         output += "periodo{sep}entrada{sep}saida{sep}delta{lf}".format(sep=sep, lf=lf)
         output += forma.format(sep=sep, lf=lf, periodo="total", entrada=self.total.total_credit, saida=self.total.total_debit, delta=self.total.delta)
-        period_names = self.periods.keys()
-        period_names.sort()
 
-        for period_name in period_names:
+        for period_name in sorted(self.periods.keys()):
             item = self.periods[period_name]
             output += forma.format(sep=sep, lf=lf,
                                    periodo=period_name,
@@ -163,14 +196,18 @@ class Statement(object):
 
         for period_name in self.periods:
             statement_period = self.periods[period_name]
-            for name in statement_period.credits:
+
+            for name in sorted(statement_period.credits):
                 statement_memo = statement_period.credits[name]
-                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=name, quantidade=statement_memo.count,
+                fixed_name = name.replace(sep,"")
+                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=fixed_name, quantidade=statement_memo.count,
                                        debito="", credito=statement_memo.total)
-            for name in statement_period.debits:
+            for name in sorted(statement_period.debits):
                 statement_memo = statement_period.debits[name]
-                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=name, quantidade=statement_memo.count,
+                fixed_name = name.replace(sep, "")
+                output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=fixed_name, quantidade=statement_memo.count,
                                        credito="", debito=statement_memo.total)
+            output += lf
 
         return output
 
@@ -186,6 +223,19 @@ output = Statement( data["BANKACCTFROM"]["BANKID"],
     data["BANKACCTFROM"]["ACCTTYPE"])
 
 for item in statements:
+    memo = item["MEMO"]
+
+    if memo in memos_to_ignore:
+        continue
+
+    if memo in memos_to_replace:
+        memo = item["MEMO"] = memos_to_replace[memo]
+
+    else:
+        for memo_to_only_care_about_the_prefix in memos_to_only_care_about_the_prefix:
+            if memo.startswith(memo_to_only_care_about_the_prefix):
+                memo = item["MEMO"] = memo_to_only_care_about_the_prefix
+
     inputs["TRNTYPE"][item["TRNTYPE"]] += 1
     inputs["MEMO_{}".format(item["TRNTYPE"])][item["MEMO"]] += 1
     statement_item = StatementItem(item)
