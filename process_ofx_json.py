@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division
 from collections import OrderedDict, defaultdict
@@ -19,7 +19,7 @@ if not os.path.isfile(source_file):
     print("usage: {} SOURCE_JSON_FILE")
     sys.exit(1)
 
-print "Opening {}".format(source_file)
+print("Opening {}".format(source_file))
 data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
 statements = data["BANKTRANLIST"]["STMTTRN"]
@@ -92,7 +92,7 @@ class OrderedDefaultdict(collections.OrderedDict):
 
     def __reduce__(self):  # optional, for pickle support
         args = (self.default_factory,) if self.default_factory else tuple()
-        return self.__class__, args, None, None, self.iteritems()
+        return self.__class__, args, None, None, self.items()
 
     def __repr__(self):  # optional
         return '%s(%r, %r)' % (self.__class__.__name__, self.default_factory,
@@ -101,7 +101,7 @@ class OrderedDefaultdict(collections.OrderedDict):
 from json import JSONEncoder
 class MyEncoder(JSONEncoder):
     def default(self, o):
-        for key, value in o.__dict__.iteritems():
+        for key, value in o.__dict__.items():
             if isinstance(value, datetime.datetime):
                 o.__dict__[key] = "{}".format(value)
         return o.__dict__
