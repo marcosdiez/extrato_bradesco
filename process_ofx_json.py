@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division
 from collections import OrderedDict, defaultdict
 import collections
 import os
@@ -7,7 +9,18 @@ import sys
 import datetime
 import codecs
 
-data2 = json.load(codecs.open(sys.argv[1], "r", "utf-8"), object_pairs_hook=OrderedDict)
+if len(sys.argv) < 2:
+    print("usage: {} SOURCE_JSON_FILE")
+    sys.exit(1)
+
+source_file = sys.argv[1]
+
+if not os.path.isfile(source_file):
+    print("usage: {} SOURCE_JSON_FILE")
+    sys.exit(1)
+
+print "Opening {}".format(source_file)
+data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
 statements = data["BANKTRANLIST"]["STMTTRN"]
 
@@ -29,21 +42,36 @@ memos_to_only_care_about_the_prefix = [
     "CONTA DE GAS COMGAS/SP",
     "TAR COMANDADA COBRANCA POR MOTIVO DE DEVOLUCAO",
     "CONTA DE LUZ ELETROPAULO/SP",
-    "DOC/TED INTERNET"
+    "DOC/TED INTERNET",
+    "TAR COMANDADA COBRANCA",
+    "TARIFA REGISTRO COBRANCA",
+    "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO"
     ]
 
 memos_to_replace = {
-    "TRANSF CC PARA CC PJ GENILDO DE OLIVEIRA CRUZ" : "SALARIO DE FUNCIONARIO",
-    "TRANSF CC PARA CC PJ GILDEMAR FERREIRA S" : "SALARIO DE FUNCIONARIO",
-    "TRANSF CC PARA CC PJ JOAO RODRIGUES" : "SALARIO DE FUNCIONARIO",
-    "TRANSF CC PARA CC PJ VALDEIR BRAZ DE SOUZA" : "SALARIO DE FUNCIONARIO",
-    "TED DIF.TITUL.CC H.BANK DEST. JOSINALDO ALEXANDRE" : "SALARIO DE FUNCIONARIO",
-    "TED DIF.TITUL.CC H.BANK DEST. Josinaldo  Alexandre": "SALARIO DE FUNCIONARIO",
-    "TRANSF CC PARA CP PJ SEBASTIAO  RODRIGUES  DE S" : "SALARIO DE FUNCIONARIO",
-    "TRANSF CC PARA CP PJ VANDERLEI PEREIRA DOURADO" : "SALARIO DE FUNCIONARIO",
+    "TRANSF CC PARA CC PJ GENILDO DE OLIVEIRA CRUZ" : "GASTO COM FUNCIONARIO",
+    "TRANSF CC PARA CC PJ GILDEMAR FERREIRA S" : "GASTO COM FUNCIONARIO",
+    "TRANSF CC PARA CC PJ JOAO RODRIGUES" : "GASTO COM FUNCIONARIO",
+    "TRANSF CC PARA CC PJ VALDEIR BRAZ DE SOUZA" : "GASTO COM FUNCIONARIO",
+    "TED DIF.TITUL.CC H.BANK DEST. JOSINALDO ALEXANDRE" : "GASTO COM FUNCIONARIO",
+    "TED DIF.TITUL.CC H.BANK DEST. Josinaldo  Alexandre": "GASTO COM FUNCIONARIO",
+    "TRANSF CC PARA CP PJ SEBASTIAO  RODRIGUES  DE S" : "GASTO COM FUNCIONARIO",
+    "TRANSF CC PARA CP PJ VANDERLEI PEREIRA DOURADO" : "GASTO COM FUNCIONARIO",
+    "BRADESCO NET EMPRESA NET EMPRESA DARF 0561" : "GASTO COM FUNCIONARIO",
+    "BRADESCO NET EMPRESA NET EMPRESA DARF 8301" : "GASTO COM FUNCIONARIO",
+    "PAGTO ELETRONICO TRIBUTO INTERNET --DARF": "GASTO COM FUNCIONARIO",
+    "PAGTO ELETRONICO TRIBUTO INTERNET - PESS GPS 2100": "GASTO COM FUNCIONARIO",
+    "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADOR": "GASTO COM FUNCIONARIO",
+    "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADO": "GASTO COM FUNCIONARIO",
+    "PAGTO ELETRONICO TRIBUTO INTERNET --PMSP SP": "IPTU",
     "TRANSF CC PARA CC PJ ZITA DE OLIVEIRA PENNA" : "SINDICO",
     "TRANSF FDOS DOC-E H BANK DEST.Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
     "TED DIF.TITUL.CC H.BANK DEST. Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
+    "DOC/TED INTERNET" : "GASTOS BANCARIOS",
+    "TARIFA BANCARIA CESTA PJ 2" : "GASTOS BANCARIOS",
+    "TAR COMANDADA COBRANCA" : "GASTOS BANCARIOS",
+    "TARIFA REGISTRO COBRANCA" : "GASTOS BANCARIOS",
+    "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO": "GASTOS BANCARIOS",
 }
 
 class OrderedDefaultdict(collections.OrderedDict):
@@ -188,25 +216,40 @@ class Statement(object):
     def to_csv_grouped(self):
         #periodo	evento	quantidade	debito	credito
 
-        forma = u"'{periodo}{sep}{descricao}{sep}{quantidade}{sep}{debito}{sep}{credito}{lf}"
+        forma  = "'{periodo}{sep}{descricao}{sep}{quantidade}{sep}{credito}{sep}{debito}{sep}{percent}{lf}"
+        forma_final = "'{periodo}{sep}{descricao}{sep}{sep}{sep}{sep}{sep}{sep}{soma_credito}{sep}{soma_debito}{sep}{delta}{lf}"
         sep = ","
         lf = "\n"
 
-        output = "periodo{sep}descricao{sep}quantidade{sep}debito{sep}credito{lf}".format(lf=lf,sep=sep)
+        output = "Período{sep}Descrição{sep}Quantidade{sep}Crédito{sep}Débito{sep}%{sep}{sep}Soma Crédito{sep}Soma Débito{sep}Diferença{lf}".format(lf=lf,sep=sep)
 
         for period_name in self.periods:
             statement_period = self.periods[period_name]
+            soma_credito = 0
+            soma_debito = 0
 
             for name in sorted(statement_period.credits):
                 statement_memo = statement_period.credits[name]
                 fixed_name = name.replace(sep,"")
+                soma_credito += statement_memo.total
                 output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=fixed_name, quantidade=statement_memo.count,
-                                       debito="", credito=statement_memo.total)
+                                       debito="", credito=statement_memo.total, percent="")
+
+            for name in statement_period.debits:
+                statement_memo = statement_period.debits[name]
+                soma_debito += statement_memo.total
+
             for name in sorted(statement_period.debits):
                 statement_memo = statement_period.debits[name]
                 fixed_name = name.replace(sep, "")
+                percent = statement_memo.total/soma_debito
                 output += forma.format(sep=sep, lf=lf, periodo=period_name, descricao=fixed_name, quantidade=statement_memo.count,
-                                       credito="", debito=statement_memo.total)
+                                       credito="", debito=statement_memo.total, percent=percent)
+
+            delta = (abs(soma_credito)-abs(soma_debito))
+            descricao = "\"Total Crédito: {:15,.2f} Débito: {:15,.2f} Diferença: {:15,.2f}\"".format(soma_credito, soma_debito, delta)
+            output += forma_final.format(sep=sep, lf=lf, periodo=period_name, descricao=descricao,
+                                         soma_debito=soma_debito, soma_credito=soma_credito, delta=delta)
             output += lf
 
         return output
@@ -228,13 +271,15 @@ for item in statements:
     if memo in memos_to_ignore:
         continue
 
+    for memo_to_only_care_about_the_prefix in memos_to_only_care_about_the_prefix:
+        if memo.startswith(memo_to_only_care_about_the_prefix):
+            memo = item["MEMO"] = memo_to_only_care_about_the_prefix
+
     if memo in memos_to_replace:
         memo = item["MEMO"] = memos_to_replace[memo]
 
-    else:
-        for memo_to_only_care_about_the_prefix in memos_to_only_care_about_the_prefix:
-            if memo.startswith(memo_to_only_care_about_the_prefix):
-                memo = item["MEMO"] = memo_to_only_care_about_the_prefix
+    if memo in memos_to_ignore:
+        continue
 
     inputs["TRNTYPE"][item["TRNTYPE"]] += 1
     inputs["MEMO_{}".format(item["TRNTYPE"])][item["MEMO"]] += 1
@@ -243,14 +288,25 @@ for item in statements:
     output.add_statement_item(statement_item)
     # print(x.get_period())
 
-# print json.dumps(inputs, sort_keys=True, indent=2)
-with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_processed.json", "w", "utf-8") as output_file:
-    output_file.write(output.to_json())
 
-with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_mensal.csv", "w", "utf-8") as output_file:
-    output_file.write(output.to_csv_mensal())
+def save_target_file(source_file, sufix, content):
+    target_file_name = source_file[0:source_file.rfind(".")] + sufix
+    print("Saving {}".format(target_file_name))
+    with codecs.open(target_file_name, "w", "utf-8-sig") as output_file:
+        output_file.write(content)
 
-with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_grouped.csv", "w", "utf-8") as output_file:
-    output_file.write(output.to_csv_grouped())
+save_target_file(source_file, "_processed.json", output.to_json())
+save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
+save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
+
+# # print json.dumps(inputs, sort_keys=True, indent=2)
+# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_processed.json", "w", "utf-8") as output_file:
+#     output_file.write(output.to_json())
+#
+# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_mensal.csv", "w", "utf-8") as output_file:
+#     output_file.write(output.to_csv_mensal())
+#
+# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_grouped.csv", "w", "utf-8") as output_file:
+#     output_file.write(output.to_csv_grouped())
 
 print("Done")

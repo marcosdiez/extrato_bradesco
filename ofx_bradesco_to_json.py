@@ -35,7 +35,7 @@ dict_list = [target_json]
 
 input_file_name = sys.argv[1]
 
-#with open(sys.argv[1], "r") as input_file:
+# with open(sys.argv[1], "r") as input_file:
 with codecs.open(sys.argv[1], 'r', 'iso-8859-1') as input_file:
     while True:
         input_line = input_file.readline()
