@@ -247,9 +247,10 @@ class Statement(object):
 
         with xlsxwriter.Workbook(target_file_name) as workbook:
             bold = workbook.add_format({'bold': True})
-            money = workbook.add_format({'num_format': '#,##0'})
+            money = workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
 
             worksheet = workbook.add_worksheet()
+            worksheet.set_column(0, 4, 12)
 
             headers = ["periodo", "entrada", "saida", "delta"]
             col = ReturnAndIncrement()
