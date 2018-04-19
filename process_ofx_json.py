@@ -173,6 +173,48 @@ class StatementPeriod(object):
             self.total_debit += item.amount
             self.debits[item.memo].add_value(item.amount)
 
+class ReturnAndIncrement():
+    def __init__(self, initial_value=0):
+        self.value = initial_value
+
+    def reset(self):
+        self.value = 0
+
+    def set(self, value):
+        self.value = value
+
+    def bump(self):
+        return_value = self.value
+        self.value += 1
+        return return_value
+
+    def get(self):
+        return self.value
+
+
+class XlsxMensal():
+    def __init__(self, target_file_name, statement):
+        self.row = 0
+        self.col = 0
+        self.target_file_name = target_file_name
+        self.statement = statement
+        self.worksheet = None
+
+    def go(self):
+        import xlsxwriter
+        with xlsxwriter.Workbook(self.target_file_name) as workbook:
+            bold = workbook.add_format({'bold': True})
+            money = workbook.add_format({'num_format': '#,##0'})
+            self.worksheet = workbook.add_worksheet()
+
+    def _add_cell(self, *param):
+        self.worksheet.write(self.row, self.col, *param)
+        self.col += 1
+
+    def _newline(self):
+        self.row = 0
+        self.col = 0
+
 class Statement(object):
     def __init__(self, bank_id, account_id, account_type):
         self.bank_id = bank_id
@@ -195,6 +237,42 @@ class Statement(object):
 
     def to_json(self):
         return json.dumps(self, sort_keys=True, indent=2, cls=MyEncoder)
+
+    def to_xlsx_mensal(self, source_file, sufix):
+        import xlsxwriter
+
+        target_file_name = source_file[0:source_file.rfind(".")] + sufix
+        print("Saving {}".format(target_file_name))
+
+
+        with xlsxwriter.Workbook(target_file_name) as workbook:
+            bold = workbook.add_format({'bold': True})
+            money = workbook.add_format({'num_format': '#,##0'})
+
+            worksheet = workbook.add_worksheet()
+
+            headers = ["periodo", "entrada", "saida", "delta"]
+            col = ReturnAndIncrement()
+            row = ReturnAndIncrement()
+            for header in headers:
+                worksheet.write(row.get(), col.bump(), header, bold)
+            row.bump()
+
+            col.reset()
+            worksheet.write(row.get(), col.bump(), "total", bold)
+            worksheet.write(row.get(), col.bump(), self.total.total_credit, money)
+            worksheet.write(row.get(), col.bump(), self.total.total_debit, money)
+            worksheet.write(row.get(), col.bump(), self.total.delta, money)
+            row.bump()
+
+            for period_name in sorted(self.periods.keys()):
+                col.reset()
+                item = self.periods[period_name]
+                worksheet.write(row.get(), col.bump(), period_name, money)
+                worksheet.write(row.get(), col.bump(), item.total_credit, money)
+                worksheet.write(row.get(), col.bump(), item.total_debit, money)
+                worksheet.write(row.get(), col.bump(), item.delta, money)
+                row.bump()
 
     def to_csv_mensal(self):
         forma = "'{periodo}{sep}{entrada}{sep}{saida}{sep}{delta}{lf}"
@@ -298,15 +376,6 @@ def save_target_file(source_file, sufix, content):
 save_target_file(source_file, "_processed.json", output.to_json())
 save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
 save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
-
-# # print json.dumps(inputs, sort_keys=True, indent=2)
-# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_processed.json", "w", "utf-8") as output_file:
-#     output_file.write(output.to_json())
-#
-# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_mensal.csv", "w", "utf-8") as output_file:
-#     output_file.write(output.to_csv_mensal())
-#
-# with codecs.open(sys.argv[1][0:sys.argv[1].rfind(".")] + "_grouped.csv", "w", "utf-8") as output_file:
-#     output_file.write(output.to_csv_grouped())
+output.to_xlsx_mensal(source_file, "_mensal.xlsx")
 
 print("Done")
