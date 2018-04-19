@@ -178,7 +178,6 @@ class StatementMemo(object):
             )
         return output
 
-
 class StatementPeriod(object):
     def __init__(self):
         self.total_credit = 0
@@ -217,27 +216,29 @@ class ReturnAndIncrement():
         return self.value
 
 
-class XlsxMensal():
-    def __init__(self, target_file_name, statement):
+class XlsxHelper():
+    def __init__(self, target_file_name):
         self.row = 0
         self.col = 0
         self.target_file_name = target_file_name
-        self.statement = statement
-        self.worksheet = None
 
-    def go(self):
+    def __enter__(self):
         import xlsxwriter
-        with xlsxwriter.Workbook(self.target_file_name) as workbook:
-            bold = workbook.add_format({'bold': True})
-            money = workbook.add_format({'num_format': '#,##0'})
-            self.worksheet = workbook.add_worksheet()
+        self.workbook = xlsxwriter.Workbook(self.target_file_name)
+        self.bold = self.workbook.add_format({'bold': True})
+        self.money = self.workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
+        self.worksheet = self.workbook.add_worksheet()
+        return self
 
-    def _add_cell(self, *param):
+    def __exit__(self, type, value, traceback):
+        self.workbook.close()
+
+    def add_cell(self, *param):
         self.worksheet.write(self.row, self.col, *param)
         self.col += 1
 
-    def _newline(self):
-        self.row = 0
+    def newline(self):
+        self.row += 1
         self.col = 0
 
 class Statement(object):
@@ -376,48 +377,34 @@ class Statement(object):
                 worksheet.write(row.get(), col.bump(), soma_debito, money)  # Soma Débito
                 worksheet.write(row.get(), col.bump(), delta, money)  # Diferença
                 row.bump()
-                
+
                 row.bump()
 
             worksheet.print_area("A1:F{}".format(row.get()))
 
-
     def to_xlsx_mensal(self, source_file, sufix):
-        import xlsxwriter
-
         target_file_name = source_file[0:source_file.rfind(".")] + sufix
         print("Saving {}".format(target_file_name))
 
+        with XlsxHelper(target_file_name) as workbook:
+            workbook.worksheet.set_column(0, 4, 12)
+            for header in ["periodo", "entrada", "saida", "delta"]:
+                workbook.add_cell(header, workbook.bold)
 
-        with xlsxwriter.Workbook(target_file_name) as workbook:
-            bold = workbook.add_format({'bold': True})
-            money = workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
-
-            worksheet = workbook.add_worksheet()
-            worksheet.set_column(0, 4, 12)
-
-            headers = ["periodo", "entrada", "saida", "delta"]
-            col = ReturnAndIncrement()
-            row = ReturnAndIncrement()
-            for header in headers:
-                worksheet.write(row.get(), col.bump(), header, bold)
-            row.bump()
-
-            col.reset()
-            worksheet.write(row.get(), col.bump(), "total", bold)
-            worksheet.write(row.get(), col.bump(), self.total.total_credit, money)
-            worksheet.write(row.get(), col.bump(), self.total.total_debit, money)
-            worksheet.write(row.get(), col.bump(), self.total.delta, money)
-            row.bump()
+            workbook.newline()
+            workbook.add_cell("total", workbook.bold)
+            workbook.add_cell(self.total.total_credit, workbook.money)
+            workbook.add_cell(self.total.total_debit, workbook.money)
+            workbook.add_cell(self.total.delta, workbook.money)
 
             for period_name in sorted(self.periods.keys()):
-                col.reset()
+                workbook.newline()
                 item = self.periods[period_name]
-                worksheet.write(row.get(), col.bump(), period_name, money)
-                worksheet.write(row.get(), col.bump(), item.total_credit, money)
-                worksheet.write(row.get(), col.bump(), item.total_debit, money)
-                worksheet.write(row.get(), col.bump(), item.delta, money)
-                row.bump()
+                workbook.add_cell(period_name, workbook.money)
+                workbook.add_cell(item.total_credit, workbook.money)
+                workbook.add_cell(item.total_debit, workbook.money)
+                workbook.add_cell(item.delta, workbook.money)
+
 
     def to_csv_mensal(self):
         forma = "'{periodo}{sep}{entrada}{sep}{saida}{sep}{delta}{lf}"
