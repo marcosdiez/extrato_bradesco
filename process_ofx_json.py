@@ -34,7 +34,9 @@ memos_to_ignore = [
     "BAIXA AUTOMAT POUPANCA*",
     "BAIXA AUTOMATICA FUNDOS",
     "RESGATE FUNDOS FIC FI R.FIXA MARTE",
-    "ESTORNO DE LANCAMENTO* B. FIC FI RF MACRO"
+    "ESTORNO DE LANCAMENTO* B. FIC FI RF MACRO",
+    "APLIC.INVEST FACIL",
+    "RESGATE INVEST FACIL"
     ]
 
 memos_to_only_care_about_the_prefix = [
@@ -72,6 +74,8 @@ memos_to_replace = {
     "TAR COMANDADA COBRANCA" : "GASTOS BANCARIOS",
     "TARIFA REGISTRO COBRANCA" : "GASTOS BANCARIOS",
     "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO": "GASTOS BANCARIOS",
+    "LIQUIDACAO DE COBRANCA VALOR DISPONIVEL" : "LIQUIDACAO DE COBRANCA Valor Disponivel"
+
 }
 
 class OrderedDefaultdict(collections.OrderedDict):
@@ -183,9 +187,9 @@ class ReturnAndIncrement():
     def set(self, value):
         self.value = value
 
-    def bump(self):
+    def bump(self, value=1):
         return_value = self.value
-        self.value += 1
+        self.value += value
         return return_value
 
     def get(self):
@@ -237,6 +241,83 @@ class Statement(object):
 
     def to_json(self):
         return json.dumps(self, sort_keys=True, indent=2, cls=MyEncoder)
+
+    def to_xlsx_grouped(self, source_file, sufix):
+        import xlsxwriter
+
+        target_file_name = source_file[0:source_file.rfind(".")] + sufix
+        print("Saving {}".format(target_file_name))
+
+        with xlsxwriter.Workbook(target_file_name) as workbook:
+            bold = workbook.add_format({'bold': True})
+            bold.set_align("center")
+
+            money = workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
+            percent = workbook.add_format({'num_format': '0.00%'})
+
+            worksheet = workbook.add_worksheet()
+            worksheet.set_column(1, 1, 70)
+            worksheet.set_column(2, 4, 12)
+            worksheet.set_column(7, 9, 13)
+
+            headers = ["Período", "Descrição", "Quantidade", "Crédito", "Débito", "%", "", "Soma Crédito", "Soma Débito", "Diferença"]
+            col = ReturnAndIncrement()
+            row = ReturnAndIncrement()
+            for header in headers:
+                worksheet.write(row.get(), col.bump(), header, bold)
+            row.bump()
+
+            for period_name in self.periods:
+                statement_period = self.periods[period_name]
+                soma_credito = 0
+                soma_debito = 0
+
+                for name in sorted(statement_period.credits):
+                    statement_memo = statement_period.credits[name]
+                    soma_credito += statement_memo.total
+
+                    col.reset()
+                    worksheet.write(row.get(), col.bump(), period_name)
+                    worksheet.write(row.get(), col.bump(), name) # descricao
+                    worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
+                    worksheet.write(row.get(), col.bump(), statement_memo.total, money) # credito
+                    row.bump()
+
+                for name in statement_period.debits:
+                    statement_memo = statement_period.debits[name]
+                    soma_debito += statement_memo.total
+
+                for name in sorted(statement_period.debits):
+                    statement_memo = statement_period.debits[name]
+                    percent_value = statement_memo.total / soma_debito
+
+                    col.reset()
+                    worksheet.write(row.get(), col.bump(), period_name)
+                    worksheet.write(row.get(), col.bump(), name) # descricao
+                    worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
+                    col.bump() # credito
+                    worksheet.write(row.get(), col.bump(), statement_memo.total, money) # debito
+                    worksheet.write(row.get(), col.bump(), percent_value, percent)  # percent
+                    row.bump()
+
+
+                delta = (abs(soma_credito) - abs(soma_debito))
+                descricao = "Total Crédito: {:15,.2f} Débito: {:15,.2f} Diferença: {:15,.2f}".format(
+                    soma_credito,
+                    soma_debito,
+                    delta)
+
+                col.reset()
+                worksheet.write(row.get(), col.bump(), period_name)
+                worksheet.write(row.get(), col.bump(), descricao)  # descricao
+                col.bump(5)
+                worksheet.write(row.get(), col.bump(), soma_credito, money)  # Soma Crédito
+                worksheet.write(row.get(), col.bump(), soma_debito, money)  # Soma Débito
+                worksheet.write(row.get(), col.bump(), delta, money)  # Diferença
+                row.bump()
+
+                row.bump()
+
 
     def to_xlsx_mensal(self, source_file, sufix):
         import xlsxwriter
@@ -378,5 +459,6 @@ save_target_file(source_file, "_processed.json", output.to_json())
 save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
 save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
 output.to_xlsx_mensal(source_file, "_mensal.xlsx")
+output.to_xlsx_grouped(source_file, "_grouped.xlsx")
 
 print("Done")
