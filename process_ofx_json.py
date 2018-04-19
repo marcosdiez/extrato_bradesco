@@ -142,6 +142,7 @@ class StatementItem(object):
         self.date = self.parse_ofx_date(stmtrn["DTPOSTED"])
         self.amount = self.parse_ofx_currency(stmtrn["TRNAMT"])
         self.memo = stmtrn["MEMO"]
+        self.original_name = stmtrn["_original_name"]
         self._validate()
 
     def _validate(self):
@@ -156,9 +157,27 @@ class StatementMemo(object):
     def __init__(self):
         self.total = 0
         self.count = 0
+        self.items = []
+
+    def add_item(self, item):
+        self.items.append(item)
+        self.add_value(item.amount)
+
     def add_value(self, value):
         self.total += value
         self.count += 1
+
+    def make_notes(self):
+        output = ""
+        for stmtrn in self.items:
+            date = stmtrn.date[0:stmtrn.date.find(" ")]
+            output += "{}  {:10.2f}  {}\n".format(
+                date,
+                stmtrn.amount,
+                stmtrn.original_name,
+            )
+        return output
+
 
 class StatementPeriod(object):
     def __init__(self):
@@ -172,10 +191,12 @@ class StatementPeriod(object):
         self.delta += item.amount
         if item.trn_type == "CREDIT":
             self.total_credit += item.amount
-            self.credits[item.memo].add_value(item.amount)
+            self.credits[item.memo].add_item(item)
+            #self.credits[item.memo].add_value(item.amount)
         else:
             self.total_debit += item.amount
-            self.debits[item.memo].add_value(item.amount)
+            self.debits[item.memo].add_item(item)
+            # self.debits[item.memo].add_value(item.amount)
 
 class ReturnAndIncrement():
     def __init__(self, initial_value=0):
@@ -252,10 +273,25 @@ class Statement(object):
             bold = workbook.add_format({'bold': True})
             bold.set_align("center")
 
+            red = workbook.add_format({'font_color': 'red'})
+            black = workbook.add_format({'font_color': 'black'})
+
             money = workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
             percent = workbook.add_format({'num_format': '0.00%'})
+            comment_format_line_size = 20
+            comment_format = {'width': 700, 'height': comment_format_line_size}
 
             worksheet = workbook.add_worksheet()
+            worksheet.set_landscape()
+            worksheet.set_header()
+            statement_date = "{} ~ {}".format(
+                self.first_statement[0:self.first_statement.find(" ")],
+                self.last_statement[0:self.last_statement.find(" ")],
+            )
+            worksheet.set_footer("&L" + target_file_name + "&C" + statement_date + '&RPage &P of &N')
+            worksheet.repeat_rows(0)  # Repeat the first row.
+            worksheet.set_margins(left=0.4, right=0.4, top=0.4)
+
             worksheet.set_column(1, 1, 70)
             worksheet.set_column(2, 4, 12)
             worksheet.set_column(7, 9, 13)
@@ -278,6 +314,9 @@ class Statement(object):
 
                     col.reset()
                     worksheet.write(row.get(), col.bump(), period_name)
+                    if statement_memo.count > 1:
+                        comment_format["height"] = comment_format_line_size * statement_memo.count
+                        worksheet.write_comment(row.get(), col.get(), statement_memo.make_notes(), comment_format)
                     worksheet.write(row.get(), col.bump(), name) # descricao
                     worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
                     worksheet.write(row.get(), col.bump(), statement_memo.total, money) # credito
@@ -293,6 +332,9 @@ class Statement(object):
 
                     col.reset()
                     worksheet.write(row.get(), col.bump(), period_name)
+                    if statement_memo.count > 1:
+                        comment_format["height"] = comment_format_line_size * statement_memo.count
+                        worksheet.write_comment(row.get(), col.get(), statement_memo.make_notes(), comment_format)
                     worksheet.write(row.get(), col.bump(), name) # descricao
                     worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
                     col.bump() # credito
@@ -309,14 +351,35 @@ class Statement(object):
 
                 col.reset()
                 worksheet.write(row.get(), col.bump(), period_name)
-                worksheet.write(row.get(), col.bump(), descricao)  # descricao
+                # worksheet.write(row.get(), col.bump(), descricao)  # descricao
+
+
+                credit_color = black
+                if soma_credito < 0:
+                    credit_color = red
+                debit_color = black
+                if soma_debito < 0:
+                    debit_color = red
+                delta_color = black
+                if delta < 0:
+                    delta_color = red
+
+                worksheet.write_rich_string(row.get(), col.bump(),
+                                            "Total Crédito: ", credit_color, "{:15,.2f}".format(soma_credito),
+                                            " Débito: ", debit_color, "{:15,.2f}".format(soma_debito),
+                                            " Diferenca: ", delta_color, "{:15,.2f}".format(delta)
+                                            )  # descricao
+
+
                 col.bump(5)
                 worksheet.write(row.get(), col.bump(), soma_credito, money)  # Soma Crédito
                 worksheet.write(row.get(), col.bump(), soma_debito, money)  # Soma Débito
                 worksheet.write(row.get(), col.bump(), delta, money)  # Diferença
                 row.bump()
-
+                
                 row.bump()
+
+            worksheet.print_area("A1:F{}".format(row.get()))
 
 
     def to_xlsx_mensal(self, source_file, sufix):
@@ -426,7 +489,7 @@ output = Statement( data["BANKACCTFROM"]["BANKID"],
     data["BANKACCTFROM"]["ACCTTYPE"])
 
 for item in statements:
-    memo = item["MEMO"]
+    memo = item["_original_name"] = item["MEMO"]
 
     if memo in memos_to_ignore:
         continue
