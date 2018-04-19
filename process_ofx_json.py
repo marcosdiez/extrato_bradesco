@@ -216,26 +216,48 @@ class ReturnAndIncrement():
         return self.value
 
 
-class XlsxHelper():
+class XlsxHelper(object):
     def __init__(self, target_file_name):
         self.row = 0
         self.col = 0
         self.target_file_name = target_file_name
 
+    def set_formats(self):
+        self.bold = self.workbook.add_format({'bold': True})
+        self.title = self.workbook.add_format({'bold': True})
+        self.title.set_align("center")
+        self.money = self.workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
+        self.red = self.workbook.add_format({'font_color': 'red'})
+        self.black = self.workbook.add_format({'font_color': 'black'})
+        self.percent = self.workbook.add_format({'num_format': '0.00%'})
+
+        self.comment_format_line_size = 20
+        self.comment_format = {'width': 700, 'height': self.comment_format_line_size}
+
     def __enter__(self):
         import xlsxwriter
         self.workbook = xlsxwriter.Workbook(self.target_file_name)
-        self.bold = self.workbook.add_format({'bold': True})
-        self.money = self.workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
         self.worksheet = self.workbook.add_worksheet()
+        self.set_formats()
         return self
 
     def __exit__(self, type, value, traceback):
         self.workbook.close()
 
+    def add_comment(self, comment, lines=None):
+        if lines is None:
+            self.worksheet.write_comment(self.row, self.col, comment)
+        else:
+            self.comment_format["height"] = self.comment_format_line_size * lines
+            self.worksheet.write_comment(self.row, self.col, comment, self.comment_format)
+
+
     def add_cell(self, *param):
         self.worksheet.write(self.row, self.col, *param)
         self.col += 1
+
+    def cell_skip(self, num_cells=1):
+        self.col += num_cells
 
     def newline(self):
         self.row += 1
@@ -265,44 +287,54 @@ class Statement(object):
         return json.dumps(self, sort_keys=True, indent=2, cls=MyEncoder)
 
     def to_xlsx_grouped(self, source_file, sufix):
-        import xlsxwriter
-
-        target_file_name = source_file[0:source_file.rfind(".")] + sufix
-        print("Saving {}".format(target_file_name))
-
-        with xlsxwriter.Workbook(target_file_name) as workbook:
-            bold = workbook.add_format({'bold': True})
-            bold.set_align("center")
-
-            red = workbook.add_format({'font_color': 'red'})
-            black = workbook.add_format({'font_color': 'black'})
-
-            money = workbook.add_format({'num_format': '#,##0.00;[Red]-#,##0.00;#,##0.00'})
-            percent = workbook.add_format({'num_format': '0.00%'})
-            comment_format_line_size = 20
-            comment_format = {'width': 700, 'height': comment_format_line_size}
-
-            worksheet = workbook.add_worksheet()
+        def set_printing_options():
+            worksheet = workbook.worksheet
             worksheet.set_landscape()
-            worksheet.set_header()
+            # worksheet.set_header()
             statement_date = "{} ~ {}".format(
                 self.first_statement[0:self.first_statement.find(" ")],
                 self.last_statement[0:self.last_statement.find(" ")],
             )
             worksheet.set_footer("&L" + target_file_name + "&C" + statement_date + '&RPage &P of &N')
             worksheet.repeat_rows(0)  # Repeat the first row.
-            worksheet.set_margins(left=0.4, right=0.4, top=0.4)
 
+        def set_layout():
+            worksheet = workbook.worksheet
+            worksheet.set_margins(left=0.4, right=0.4, top=0.4)
             worksheet.set_column(1, 1, 70)
             worksheet.set_column(2, 4, 12)
             worksheet.set_column(7, 9, 13)
 
-            headers = ["Período", "Descrição", "Quantidade", "Crédito", "Débito", "%", "", "Soma Crédito", "Soma Débito", "Diferença"]
-            col = ReturnAndIncrement()
-            row = ReturnAndIncrement()
+        def add_descricao_total():
+            credit_color = workbook.black
+            if soma_credito < 0:
+                credit_color = workbook.red
+            debit_color = workbook.black
+            if soma_debito < 0:
+                debit_color = workbook.red
+            delta_color = workbook.black
+            if delta < 0:
+                delta_color = workbook.red
+            workbook.worksheet.write_rich_string(workbook.row, workbook.col,
+                                                 "Total Crédito: ", credit_color, "{:15,.2f}".format(soma_credito),
+                                                 " Débito: ", debit_color, "{:15,.2f}".format(soma_debito),
+                                                 " Diferenca: ", delta_color, "{:15,.2f}".format(delta)
+                                                 )  # descricao
+            workbook.cell_skip()
+
+        target_file_name = source_file[0:source_file.rfind(".")] + sufix
+        print("Saving {}".format(target_file_name))
+
+        with XlsxHelper(target_file_name) as workbook:
+            set_printing_options()
+            set_layout()
+
+            headers = ["Período", "Descrição", "Quantidade", "Crédito",
+                       "Débito", "%", "", "Soma Crédito", "Soma Débito",
+                       "Diferença"]
             for header in headers:
-                worksheet.write(row.get(), col.bump(), header, bold)
-            row.bump()
+                workbook.add_cell(header, workbook.title)
+            workbook.newline()
 
             for period_name in self.periods:
                 statement_period = self.periods[period_name]
@@ -313,74 +345,43 @@ class Statement(object):
                     statement_memo = statement_period.credits[name]
                     soma_credito += statement_memo.total
 
-                    col.reset()
-                    worksheet.write(row.get(), col.bump(), period_name)
+                    workbook.add_cell(period_name)
                     if statement_memo.count > 1:
-                        comment_format["height"] = comment_format_line_size * statement_memo.count
-                        worksheet.write_comment(row.get(), col.get(), statement_memo.make_notes(), comment_format)
-                    worksheet.write(row.get(), col.bump(), name) # descricao
-                    worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
-                    worksheet.write(row.get(), col.bump(), statement_memo.total, money) # credito
-                    row.bump()
+                        workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                    workbook.add_cell(name)  # descricao
+                    workbook.add_cell(statement_memo.count)  # quantidade
+                    workbook.add_cell(statement_memo.total, workbook.money)  # credito
+                    workbook.newline()
 
                 for name in statement_period.debits:
-                    statement_memo = statement_period.debits[name]
-                    soma_debito += statement_memo.total
+                    soma_debito += statement_period.debits[name].total
 
                 for name in sorted(statement_period.debits):
                     statement_memo = statement_period.debits[name]
                     percent_value = statement_memo.total / soma_debito
 
-                    col.reset()
-                    worksheet.write(row.get(), col.bump(), period_name)
+                    workbook.add_cell(period_name)
                     if statement_memo.count > 1:
-                        comment_format["height"] = comment_format_line_size * statement_memo.count
-                        worksheet.write_comment(row.get(), col.get(), statement_memo.make_notes(), comment_format)
-                    worksheet.write(row.get(), col.bump(), name) # descricao
-                    worksheet.write(row.get(), col.bump(), statement_memo.count) #quantidade
-                    col.bump() # credito
-                    worksheet.write(row.get(), col.bump(), statement_memo.total, money) # debito
-                    worksheet.write(row.get(), col.bump(), percent_value, percent)  # percent
-                    row.bump()
-
+                        workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                    workbook.add_cell(name)  # descricao
+                    workbook.add_cell(statement_memo.count)  # quantidade
+                    workbook.cell_skip()
+                    workbook.add_cell(statement_memo.total, workbook.money)  # debito
+                    workbook.add_cell(percent_value, workbook.percent)  # percent
+                    workbook.newline()
 
                 delta = (abs(soma_credito) - abs(soma_debito))
-                descricao = "Total Crédito: {:15,.2f} Débito: {:15,.2f} Diferença: {:15,.2f}".format(
-                    soma_credito,
-                    soma_debito,
-                    delta)
+                workbook.add_cell(period_name)
+                add_descricao_total()
+                workbook.cell_skip(5)
+                workbook.add_cell(soma_credito, workbook.money)  # Soma Crédito
+                workbook.add_cell(soma_debito, workbook.money)  # Soma Débito
+                workbook.add_cell(delta, workbook.money)  # Diferença
+                workbook.newline()
+                workbook.newline()
 
-                col.reset()
-                worksheet.write(row.get(), col.bump(), period_name)
-                # worksheet.write(row.get(), col.bump(), descricao)  # descricao
+            workbook.worksheet.print_area("A1:F{}".format(workbook.row))
 
-
-                credit_color = black
-                if soma_credito < 0:
-                    credit_color = red
-                debit_color = black
-                if soma_debito < 0:
-                    debit_color = red
-                delta_color = black
-                if delta < 0:
-                    delta_color = red
-
-                worksheet.write_rich_string(row.get(), col.bump(),
-                                            "Total Crédito: ", credit_color, "{:15,.2f}".format(soma_credito),
-                                            " Débito: ", debit_color, "{:15,.2f}".format(soma_debito),
-                                            " Diferenca: ", delta_color, "{:15,.2f}".format(delta)
-                                            )  # descricao
-
-
-                col.bump(5)
-                worksheet.write(row.get(), col.bump(), soma_credito, money)  # Soma Crédito
-                worksheet.write(row.get(), col.bump(), soma_debito, money)  # Soma Débito
-                worksheet.write(row.get(), col.bump(), delta, money)  # Diferença
-                row.bump()
-
-                row.bump()
-
-            worksheet.print_area("A1:F{}".format(row.get()))
 
     def to_xlsx_mensal(self, source_file, sufix):
         target_file_name = source_file[0:source_file.rfind(".")] + sufix
