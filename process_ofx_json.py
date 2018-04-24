@@ -36,7 +36,10 @@ memos_to_ignore = [
     "RESGATE FUNDOS FIC FI R.FIXA MARTE",
     "ESTORNO DE LANCAMENTO* B. FIC FI RF MACRO",
     "APLIC.INVEST FACIL",
-    "RESGATE INVEST FACIL"
+    "RESGATE INVEST FACIL",
+    "APLICACAO EM FUNDOS",
+    "APLICACAO EM FUNDOS FICFI REF.DI SPECIAL",
+    "APLICACAO EM FUNDOS FICFIRF DI SPECIAL"
     ]
 
 memos_to_only_care_about_the_prefix = [
@@ -66,6 +69,7 @@ memos_to_replace = {
     "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADOR": "GASTO COM FUNCIONARIO",
     "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADO": "GASTO COM FUNCIONARIO",
     "PAGTO ELETRONICO TRIBUTO INTERNET --PMSP SP": "IPTU",
+
     "TRANSF CC PARA CC PJ ZITA DE OLIVEIRA PENNA" : "SINDICO",
     "TRANSF FDOS DOC-E H BANK DEST.Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
     "TED DIF.TITUL.CC H.BANK DEST. Celso do Santos": "TED DIF.TITUL.CC H.BANK DEST. Celso dos Santos",
@@ -289,8 +293,9 @@ class Statement(object):
     def to_xlsx_grouped(self, source_file, sufix):
         def set_printing_options():
             worksheet = workbook.worksheet
-            worksheet.set_landscape()
+            # worksheet.set_landscape()
             # worksheet.set_header()
+            worksheet.fit_to_pages(1, 0)
             statement_date = "{} ~ {}".format(
                 self.first_statement[0:self.first_statement.find(" ")],
                 self.last_statement[0:self.last_statement.find(" ")],
@@ -302,7 +307,8 @@ class Statement(object):
             worksheet = workbook.worksheet
             worksheet.set_margins(left=0.4, right=0.4, top=0.4)
             worksheet.set_column(1, 1, 70)
-            worksheet.set_column(2, 4, 12)
+            worksheet.set_column(2, 2, 8)
+            worksheet.set_column(3, 4, 12)
             worksheet.set_column(7, 9, 13)
 
         def add_descricao_total():
@@ -329,7 +335,7 @@ class Statement(object):
             set_printing_options()
             set_layout()
 
-            headers = ["Período", "Descrição", "Quantidade", "Crédito",
+            headers = ["Período", "Descrição", "Quant", "Crédito",
                        "Débito", "%", "", "Soma Crédito", "Soma Débito",
                        "Diferença"]
             for header in headers:
