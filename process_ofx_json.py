@@ -111,16 +111,20 @@ class StatementItem(object):
     @staticmethod
     def parse_ofx_date(input):
         pos = input.find("[")
-        if input.find("["):
+        if pos >= 0:
             input = input[0:pos]
         #"DTSTART": "20180120120000",
         #"DTSTART": "2018x01x20x12x0000",
         #< DTPOSTED > 20130204000000[-03:EST]
-        return datetime.datetime.strptime(input, "%Y%m%d%H%M%S")
+        try:
+            return datetime.datetime.strptime(input, "%Y%m%d%H%M%S")
+        except ValueError:
+            return datetime.datetime.strptime(input, "%Y%m%d")
+
 
     @staticmethod
     def parse_ofx_currency(input):
-        return float(input.replace(",", "."))
+        return float(input.replace("R$ ","").replace(",", "."))
 
     def get_period(self):
         return self.date.strftime("%Y-%m")
@@ -141,13 +145,22 @@ class StatementItem(object):
         self.memo = stmtrn["MEMO"]
         self.original_name = stmtrn["_original_name"]
 
+        self._normalize_ofx()
+        self._validate()
+
+    def _normalize_ofx(self):
+        #sicoob
         if self.trn_type == "OTHER":
             if self.amount < 0:
                 self.trn_type = "DEBIT"
             else:
                 self.trn_type = "CREDIT"
 
-        self._validate()
+        #intermedium
+        if self.trn_type == "C":
+            self.trn_type = "CREDIT"
+        if self.trn_type == "D":
+            self.trn_type = "DEBIT"
 
     def _validate(self):
         if self.trn_type == "CREDIT" and self.amount < 0:
@@ -495,11 +508,23 @@ print("Opening {}".format(source_file))
 data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
 # data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
 
-# print(json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
-# sys.exit(2)
 
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
+
+if data["BANKTRANLIST"]["STMTTRN"].__class__ != [].__class__:
+    # we don't want to use instanceof here
+    # this is the case where there is only one entry in the statement
+    data["BANKTRANLIST"]["STMTTRN"] = [ data["BANKTRANLIST"]["STMTTRN"] ]
+
+
 statements = data["BANKTRANLIST"]["STMTTRN"]
+
+# print(json.dumps(data2, sort_keys=True, indent=4, cls=MyEncoder))
+# print(json.dumps(data, sort_keys=True, indent=4, cls=MyEncoder))
+# print(statements.__class__)
+# print(json.dumps(statements, sort_keys=True, indent=4, cls=MyEncoder))
+# sys.exit(2)
+
 
 inputs = {
     "TRNTYPE": defaultdict(lambda: 0),
