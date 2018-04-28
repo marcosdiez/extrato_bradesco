@@ -9,20 +9,7 @@ import sys
 import datetime
 import codecs
 
-if len(sys.argv) < 2:
-    print("usage: {} SOURCE_JSON_FILE")
-    sys.exit(1)
-
-source_file = sys.argv[1]
-
-if not os.path.isfile(source_file):
-    print("usage: {} SOURCE_JSON_FILE")
-    sys.exit(1)
-
-print("Opening {}".format(source_file))
-data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
-data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
-statements = data["BANKTRANLIST"]["STMTTRN"]
+import ofx_bradesco_to_json
 
 memos_to_ignore = [
     "Baixa Automatica Fundos",
@@ -207,7 +194,7 @@ class StatementPeriod(object):
             self.debits[item.memo].add_item(item)
             # self.debits[item.memo].add_value(item.amount)
 
-class ReturnAndIncrement():
+class ReturnAndIncrement(object):
     def __init__(self, initial_value=0):
         self.value = initial_value
 
@@ -225,14 +212,13 @@ class ReturnAndIncrement():
     def get(self):
         return self.value
 
-
 class XlsxHelper(object):
     def __init__(self, target_file_name):
         self.row = 0
         self.col = 0
         self.target_file_name = target_file_name
 
-    def set_formats(self):
+    def _set_formats(self):
         self.bold = self.workbook.add_format({'bold': True})
         self.title = self.workbook.add_format({'bold': True})
         self.title.set_align("center")
@@ -247,12 +233,19 @@ class XlsxHelper(object):
     def __enter__(self):
         import xlsxwriter
         self.workbook = xlsxwriter.Workbook(self.target_file_name)
-        self.worksheet = self.workbook.add_worksheet()
-        self.set_formats()
+        self._set_formats()
         return self
 
     def __exit__(self, type, value, traceback):
         self.workbook.close()
+
+    def add_worksheet(self, name=None):
+        self.col = 0
+        self.row = 0
+        if name is None:
+            self.worksheet = self.workbook.add_worksheet()
+        else:
+            self.worksheet = self.workbook.add_worksheet(name)
 
     def add_comment(self, comment, lines=None):
         if lines is None:
@@ -260,7 +253,6 @@ class XlsxHelper(object):
         else:
             self.comment_format["height"] = self.comment_format_line_size * lines
             self.worksheet.write_comment(self.row, self.col, comment, self.comment_format)
-
 
     def add_cell(self, *param):
         self.worksheet.write(self.row, self.col, *param)
@@ -296,7 +288,17 @@ class Statement(object):
     def to_json(self):
         return json.dumps(self, sort_keys=True, indent=2, cls=MyEncoder)
 
-    def to_xlsx_grouped(self, source_file, sufix):
+    def to_xlsx(self, source_file):
+        target_file_name = source_file[0:source_file.rfind(".")] + ".xlsx"
+        print("Saving {}".format(target_file_name))
+
+        with XlsxHelper(target_file_name) as workbook:
+            print("Adding grouped...")
+            self.to_xlsx_grouped(workbook, target_file_name)
+            print("Adding mensal...")
+            self.to_xlsx_mensal(workbook)
+
+    def to_xlsx_grouped(self, workbook , target_file_name):
         def set_printing_options():
             worksheet = workbook.worksheet
             # worksheet.set_landscape()
@@ -334,89 +336,83 @@ class Statement(object):
                                                  )  # descricao
             workbook.cell_skip()
 
-        target_file_name = source_file[0:source_file.rfind(".")] + sufix
-        print("Saving {}".format(target_file_name))
+        workbook.add_worksheet("agrupado")
+        set_printing_options()
+        set_layout()
 
-        with XlsxHelper(target_file_name) as workbook:
-            set_printing_options()
-            set_layout()
+        headers = ["Período", "Descrição", "Quant", "Crédito",
+                   "Débito", "%", "", "Soma Crédito", "Soma Débito",
+                   "Diferença"]
+        for header in headers:
+            workbook.add_cell(header, workbook.title)
+        workbook.newline()
 
-            headers = ["Período", "Descrição", "Quant", "Crédito",
-                       "Débito", "%", "", "Soma Crédito", "Soma Débito",
-                       "Diferença"]
-            for header in headers:
-                workbook.add_cell(header, workbook.title)
-            workbook.newline()
+        for period_name in self.periods:
+            statement_period = self.periods[period_name]
+            soma_credito = 0
+            soma_debito = 0
 
-            for period_name in self.periods:
-                statement_period = self.periods[period_name]
-                soma_credito = 0
-                soma_debito = 0
+            for name in sorted(statement_period.credits):
+                statement_memo = statement_period.credits[name]
+                soma_credito += statement_memo.total
 
-                for name in sorted(statement_period.credits):
-                    statement_memo = statement_period.credits[name]
-                    soma_credito += statement_memo.total
-
-                    workbook.add_cell(period_name)
-                    if statement_memo.count > 1:
-                        workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
-                    workbook.add_cell(name)  # descricao
-                    workbook.add_cell(statement_memo.count)  # quantidade
-                    workbook.add_cell(statement_memo.total, workbook.money)  # credito
-                    workbook.newline()
-
-                for name in statement_period.debits:
-                    soma_debito += statement_period.debits[name].total
-
-                for name in sorted(statement_period.debits):
-                    statement_memo = statement_period.debits[name]
-                    percent_value = statement_memo.total / soma_debito
-
-                    workbook.add_cell(period_name)
-                    if statement_memo.count > 1:
-                        workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
-                    workbook.add_cell(name)  # descricao
-                    workbook.add_cell(statement_memo.count)  # quantidade
-                    workbook.cell_skip()
-                    workbook.add_cell(statement_memo.total, workbook.money)  # debito
-                    workbook.add_cell(percent_value, workbook.percent)  # percent
-                    workbook.newline()
-
-                delta = (abs(soma_credito) - abs(soma_debito))
                 workbook.add_cell(period_name)
-                add_descricao_total()
-                workbook.cell_skip(5)
-                workbook.add_cell(soma_credito, workbook.money)  # Soma Crédito
-                workbook.add_cell(soma_debito, workbook.money)  # Soma Débito
-                workbook.add_cell(delta, workbook.money)  # Diferença
+                if statement_memo.count > 1:
+                    workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                workbook.add_cell(name)  # descricao
+                workbook.add_cell(statement_memo.count)  # quantidade
+                workbook.add_cell(statement_memo.total, workbook.money)  # credito
                 workbook.newline()
+
+            for name in statement_period.debits:
+                soma_debito += statement_period.debits[name].total
+
+            for name in sorted(statement_period.debits):
+                statement_memo = statement_period.debits[name]
+                percent_value = statement_memo.total / soma_debito
+
+                workbook.add_cell(period_name)
+                if statement_memo.count > 1:
+                    workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                workbook.add_cell(name)  # descricao
+                workbook.add_cell(statement_memo.count)  # quantidade
+                workbook.cell_skip()
+                workbook.add_cell(statement_memo.total, workbook.money)  # debito
+                workbook.add_cell(percent_value, workbook.percent)  # percent
                 workbook.newline()
 
-            workbook.worksheet.print_area("A1:F{}".format(workbook.row))
-
-
-    def to_xlsx_mensal(self, source_file, sufix):
-        target_file_name = source_file[0:source_file.rfind(".")] + sufix
-        print("Saving {}".format(target_file_name))
-
-        with XlsxHelper(target_file_name) as workbook:
-            workbook.worksheet.set_column(0, 4, 12)
-            for header in ["periodo", "entrada", "saida", "delta"]:
-                workbook.add_cell(header, workbook.bold)
-
+            delta = (abs(soma_credito) - abs(soma_debito))
+            workbook.add_cell(period_name)
+            add_descricao_total()
+            workbook.cell_skip(5)
+            workbook.add_cell(soma_credito, workbook.money)  # Soma Crédito
+            workbook.add_cell(soma_debito, workbook.money)  # Soma Débito
+            workbook.add_cell(delta, workbook.money)  # Diferença
             workbook.newline()
-            workbook.add_cell("total", workbook.bold)
-            workbook.add_cell(self.total.total_credit, workbook.money)
-            workbook.add_cell(self.total.total_debit, workbook.money)
-            workbook.add_cell(self.total.delta, workbook.money)
+            workbook.newline()
 
-            for period_name in sorted(self.periods.keys()):
-                workbook.newline()
-                item = self.periods[period_name]
-                workbook.add_cell(period_name, workbook.money)
-                workbook.add_cell(item.total_credit, workbook.money)
-                workbook.add_cell(item.total_debit, workbook.money)
-                workbook.add_cell(item.delta, workbook.money)
+        workbook.worksheet.print_area("A1:F{}".format(workbook.row))
+
+
+    def to_xlsx_mensal(self, workbook):
+        workbook.add_worksheet("mensal")
+        workbook.worksheet.set_column(0, 4, 12)
+        for header in ["periodo", "entrada", "saida", "delta"]:
+            workbook.add_cell(header, workbook.bold)
+
+        workbook.newline()
+        workbook.add_cell("total", workbook.bold)
+        workbook.add_cell(self.total.total_credit, workbook.money)
+        workbook.add_cell(self.total.total_debit, workbook.money)
+        workbook.add_cell(self.total.delta, workbook.money)
+
+        for period_name in sorted(self.periods.keys()):
+            workbook.newline()
+            item = self.periods[period_name]
+            workbook.add_cell(period_name, workbook.money)
+            workbook.add_cell(item.total_credit, workbook.money)
+            workbook.add_cell(item.total_debit, workbook.money)
+            workbook.add_cell(item.delta, workbook.money)
 
 
     def to_csv_mensal(self):
@@ -477,6 +473,22 @@ class Statement(object):
 
         return output
 
+if len(sys.argv) < 2:
+    print("usage: {} SOURCE_JSON_FILE")
+    sys.exit(1)
+
+source_file = sys.argv[1]
+
+if not os.path.isfile(source_file):
+    print("usage: {} SOURCE_JSON_FILE")
+    sys.exit(1)
+
+print("Opening {}".format(source_file))
+
+data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
+# data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
+data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
+statements = data["BANKTRANLIST"]["STMTTRN"]
 
 inputs = {
     "TRNTYPE": defaultdict(lambda: 0),
@@ -518,10 +530,14 @@ def save_target_file(source_file, sufix, content):
     with codecs.open(target_file_name, "w", "utf-8-sig") as output_file:
         output_file.write(content)
 
-save_target_file(source_file, "_processed.json", output.to_json())
-save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
-save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
-output.to_xlsx_mensal(source_file, "_mensal.xlsx")
-output.to_xlsx_grouped(source_file, "_grouped.xlsx")
+output.to_json()
+
+if "--debug" in sys.argv:
+    save_target_file(source_file, "_processed.json", output.to_json())
+    save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
+    save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
+# output.to_xlsx_mensal(source_file, "_mensal.xlsx")
+# output.to_xlsx_grouped(source_file, "_grouped.xlsx")
+output.to_xlsx(source_file)
 
 print("Done")
