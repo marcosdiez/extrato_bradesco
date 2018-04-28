@@ -474,7 +474,7 @@ class Statement(object):
         return output
 
 if len(sys.argv) < 2:
-    print("usage: {} SOURCE_JSON_FILE")
+    print("usage: {} SOURCE_OFX_FILE [--debug]")
     sys.exit(1)
 
 source_file = sys.argv[1]
