@@ -13,6 +13,8 @@ LINE_SINGLE_LINE_TAG = 3
 def _parse_line(line):
     if line.startswith("</"):
         return LINE_CLOSE_TAG
+    if line.startswith("<") and "</" in line:
+        return LINE_SINGLE_LINE_TAG
     if line.startswith("<") and line.endswith(">"):
         return LINE_OPEN_TAG
     if line.startswith("<"):
@@ -60,6 +62,11 @@ def ofx_bradesco_to_json(input_file):
             pos = input_line.find(">")
             key = input_line[1:pos]
             value = input_line[pos + 1:]
+
+            pos2 = value.find("</")
+            if pos2 > 0:
+                value = value[0:pos2]
+
             dict_list[-1][key] = value
 
         else:

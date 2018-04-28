@@ -21,6 +21,8 @@ def write_to_output(output_file, input_line):
 def parse_line(line):
     if line.startswith("</"):
         return LINE_CLOSE_TAG
+    if line.startswith("<") and "</" in line:
+        return LINE_SINGLE_LINE_TAG
     if line.startswith("<") and line.endswith(">"):
         return LINE_OPEN_TAG
     if line.startswith("<"):

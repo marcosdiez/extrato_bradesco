@@ -140,6 +140,13 @@ class StatementItem(object):
         self.amount = self.parse_ofx_currency(stmtrn["TRNAMT"])
         self.memo = stmtrn["MEMO"]
         self.original_name = stmtrn["_original_name"]
+
+        if self.trn_type == "OTHER":
+            if self.amount < 0:
+                self.trn_type = "DEBIT"
+            else:
+                self.trn_type = "CREDIT"
+
         self._validate()
 
     def _validate(self):
@@ -487,13 +494,17 @@ print("Opening {}".format(source_file))
 
 data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
 # data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
+
+# print(json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
+# sys.exit(2)
+
 data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
 statements = data["BANKTRANLIST"]["STMTTRN"]
 
 inputs = {
     "TRNTYPE": defaultdict(lambda: 0),
     "MEMO_CREDIT": defaultdict(lambda: 0),
-    "MEMO_DEBIT": defaultdict(lambda: 0)
+    "MEMO_DEBIT": defaultdict(lambda: 0),
 }
 
 output = Statement( data["BANKACCTFROM"]["BANKID"],
@@ -516,9 +527,10 @@ for item in statements:
     if memo in memos_to_ignore:
         continue
 
-    inputs["TRNTYPE"][item["TRNTYPE"]] += 1
-    inputs["MEMO_{}".format(item["TRNTYPE"])][item["MEMO"]] += 1
+    #this also parses the data
     statement_item = StatementItem(item)
+    inputs["TRNTYPE"][statement_item.trn_type] += 1
+    inputs["MEMO_{}".format(statement_item.trn_type)][statement_item.memo] += 1
 
     output.add_statement_item(statement_item)
     # print(x.get_period())
@@ -541,3 +553,4 @@ if "--debug" in sys.argv:
 output.to_xlsx(source_file)
 
 print("Done")
+
