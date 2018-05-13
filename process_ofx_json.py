@@ -157,8 +157,15 @@ class StatementItem(object):
         self._normalize_ofx()
         self._validate()
 
+    def __eq__(self, other):
+        return self.id == other.id and \
+    self.trn_type == other.trn_type and \
+    self.date == self.date and \
+    self.amount == other.amount and \
+    self.memo == other.memo
+
     def __repr__(self):
-        return "StatementItem({}/{}/{}/{})".format(self.trn_type, self.date, self.amount, self.memo)
+        return "StatementItem({}/{}/{}/{}/{})".format(self.id, self.trn_type, self.date, self.amount, self.memo)
 
     def _normalize_ofx(self):
         #sicoob
@@ -551,10 +558,18 @@ class MasterStatement(object):
             # this also parses the data
             statement_item = StatementItem(item)
             if statement_item.id in self.statement_ids:
-                print("Warning: ignoring repeated element {}".format(statement_item))
+                if statement_item == self.statement_ids[statement_item.id]:
+                    print("Ignoring repeated {}".format(statement_item))
+                else:
+                    print("ERROR: Invalid OFX. Two different items with the same key:\n\t{}\n\t{}".format(
+                        statement_item,
+                        self.statement_ids[statement_item.id]
+                    ))
+                    raise(ValueError([statement_item, self.statement_ids[statement_item.id]]))
+
                 continue
             else:
-                self.statement_ids[statement_item.id] = None
+                self.statement_ids[statement_item.id] = statement_item
             self.inputs["TRNTYPE"][statement_item.trn_type] += 1
             self.inputs["MEMO_{}".format(statement_item.trn_type)][statement_item.memo] += 1
 
@@ -586,6 +601,9 @@ def _fix_ofxjson(data2):
         data = data[0]
     data = data["STMTRS"]
 
+    if "STMTTRN" not in data["BANKTRANLIST"]:
+        return False
+
     if data["BANKTRANLIST"]["STMTTRN"].__class__ != [].__class__:
         # we don't want to use instanceof here
         # this is the case where there is only one entry in the statement
@@ -608,13 +626,16 @@ for source_file in sys.argv[1:]:
     if source_file == "--debug":
         continue
     target_file_name = source_file
-    print("Opening {}".format(source_file))
+    print("Reading {}".format(source_file))
     data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
     if debug_mode:
         save_target_file(source_file, ".json", json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
 
     data = _fix_ofxjson(data2)
-    master_statement.add_data(data)
+    if data is False:
+        print("Ignoring [{}]".format(source_file))
+    else:
+        master_statement.add_data(data)
 
 master_statement.process_data()
 
