@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 import collections
 import os
 import json
@@ -38,7 +38,8 @@ memos_to_only_care_about_the_prefix = [
     "DOC/TED INTERNET",
     "TAR COMANDADA COBRANCA",
     "TARIFA REGISTRO COBRANCA",
-    "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO"
+    "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO",
+    "Saque c/c Bdn"
     ]
 
 memos_to_replace = {
@@ -107,6 +108,13 @@ class MyEncoder(JSONEncoder):
                 o.__dict__[key] = "{}".format(value)
         return o.__dict__
 
+def save_target_file(source_file, sufix, content):
+    target_file_name = source_file[0:source_file.rfind(".")] + sufix
+    print("Saving {}".format(target_file_name))
+    with codecs.open(target_file_name, "w", "utf-8-sig") as output_file:
+        output_file.write(content)
+
+
 class StatementItem(object):
     @staticmethod
     def parse_ofx_date(input):
@@ -170,6 +178,7 @@ class StatementItem(object):
         if self.trn_type not in ["CREDIT", "DEBIT"]:
             raise ValueError(self.stmtrn)
 
+
 class StatementMemo(object):
     def __init__(self):
         self.total = 0
@@ -195,6 +204,7 @@ class StatementMemo(object):
             )
         return output
 
+
 class StatementPeriod(object):
     def __init__(self):
         self.total_credit = 0
@@ -214,6 +224,7 @@ class StatementPeriod(object):
             self.debits[item.memo].add_item(item)
             # self.debits[item.memo].add_value(item.amount)
 
+
 class ReturnAndIncrement(object):
     def __init__(self, initial_value=0):
         self.value = initial_value
@@ -231,6 +242,7 @@ class ReturnAndIncrement(object):
 
     def get(self):
         return self.value
+
 
 class XlsxHelper(object):
     def __init__(self, target_file_name):
@@ -284,6 +296,7 @@ class XlsxHelper(object):
     def newline(self):
         self.row += 1
         self.col = 0
+
 
 class Statement(object):
     def __init__(self, bank_id, account_id, account_type):
@@ -360,7 +373,9 @@ class Statement(object):
         set_printing_options()
         set_layout()
 
-        headers = ["Período", "Descrição", "Quant", "Crédito",
+        descricao = "Descricao ({}/{}/{})".format(self.bank_id, self.account_id, self.account_type)
+
+        headers = ["Período", descricao, "Quant", "Crédito",
                    "Débito", "%", "", "Soma Crédito", "Soma Débito",
                    "Diferença"]
         for header in headers:
@@ -493,8 +508,67 @@ class Statement(object):
 
         return output
 
+
+class MasterStatement(object):
+    def __init__(self):
+        self.inputs = {
+            "TRNTYPE": defaultdict(lambda: 0),
+            "MEMO_CREDIT": defaultdict(lambda: 0),
+            "MEMO_DEBIT": defaultdict(lambda: 0),
+        }
+        self.output = None
+        self.bank_account_from = None
+
+    def add_data(self, data):
+        self._assert_same_bank_account(data)
+
+        self.output = Statement(data["BANKACCTFROM"]["BANKID"],
+                           data["BANKACCTFROM"]["ACCTID"],
+                           data["BANKACCTFROM"]["ACCTTYPE"])
+        statements = data["BANKTRANLIST"]["STMTTRN"]
+        for item in statements:
+            memo = item["_original_name"] = item["MEMO"]
+
+            if memo in memos_to_ignore:
+                continue
+
+            for memo_to_only_care_about_the_prefix in memos_to_only_care_about_the_prefix:
+                if memo.startswith(memo_to_only_care_about_the_prefix):
+                    memo = item["MEMO"] = memo_to_only_care_about_the_prefix
+
+            if memo in memos_to_replace:
+                memo = item["MEMO"] = memos_to_replace[memo]
+
+            if memo in memos_to_ignore:
+                continue
+
+            # this also parses the data
+            statement_item = StatementItem(item)
+            self.inputs["TRNTYPE"][statement_item.trn_type] += 1
+            self.inputs["MEMO_{}".format(statement_item.trn_type)][statement_item.memo] += 1
+
+            self.output.add_statement_item(statement_item)
+            # print(x.get_period())
+
+    def process_data(self):
+        self.output.to_json()
+
+    def _assert_same_bank_account(self, data):
+        if self.bank_account_from is None:
+            self.bank_account_from = data["BANKACCTFROM"]
+        else:
+            for key in self.bank_account_from.keys():
+                target = data["BANKACCTFROM"]
+                if self.bank_account_from[key] != target.get(key, None):
+                    raise ValueError(
+                        "Source and Target Bank Accounts are not the same: {} / {} / {}".format(
+                            key,
+                            self.bank_account_from[key],
+                            target.get(key, None)))
+
+
 if len(sys.argv) < 2:
-    print("usage: {} SOURCE_OFX_FILE [--debug]")
+    print("usage: {} SOURCE_OFX_FILES [--debug]")
     sys.exit(1)
 
 source_file = sys.argv[1]
@@ -506,76 +580,32 @@ if not os.path.isfile(source_file):
 print("Opening {}".format(source_file))
 
 data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
-# data2 = json.load(codecs.open(source_file, "r", "utf-8"), object_pairs_hook=OrderedDict)
 
+if "--debug" in sys.argv:
+    save_target_file(source_file, ".json", json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
 
-data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]["STMTRS"]
+data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]
+
+if data.__class__ == [].__class__:
+    data = data[0]
+data = data["STMTRS"]
 
 if data["BANKTRANLIST"]["STMTTRN"].__class__ != [].__class__:
     # we don't want to use instanceof here
     # this is the case where there is only one entry in the statement
     data["BANKTRANLIST"]["STMTTRN"] = [ data["BANKTRANLIST"]["STMTTRN"] ]
 
-
-statements = data["BANKTRANLIST"]["STMTTRN"]
-
-# print(json.dumps(data2, sort_keys=True, indent=4, cls=MyEncoder))
-# print(json.dumps(data, sort_keys=True, indent=4, cls=MyEncoder))
-# print(statements.__class__)
-# print(json.dumps(statements, sort_keys=True, indent=4, cls=MyEncoder))
-# sys.exit(2)
-
-
-inputs = {
-    "TRNTYPE": defaultdict(lambda: 0),
-    "MEMO_CREDIT": defaultdict(lambda: 0),
-    "MEMO_DEBIT": defaultdict(lambda: 0),
-}
-
-output = Statement( data["BANKACCTFROM"]["BANKID"],
-    data["BANKACCTFROM"]["ACCTID"],
-    data["BANKACCTFROM"]["ACCTTYPE"])
-
-for item in statements:
-    memo = item["_original_name"] = item["MEMO"]
-
-    if memo in memos_to_ignore:
-        continue
-
-    for memo_to_only_care_about_the_prefix in memos_to_only_care_about_the_prefix:
-        if memo.startswith(memo_to_only_care_about_the_prefix):
-            memo = item["MEMO"] = memo_to_only_care_about_the_prefix
-
-    if memo in memos_to_replace:
-        memo = item["MEMO"] = memos_to_replace[memo]
-
-    if memo in memos_to_ignore:
-        continue
-
-    #this also parses the data
-    statement_item = StatementItem(item)
-    inputs["TRNTYPE"][statement_item.trn_type] += 1
-    inputs["MEMO_{}".format(statement_item.trn_type)][statement_item.memo] += 1
-
-    output.add_statement_item(statement_item)
-    # print(x.get_period())
-
-
-def save_target_file(source_file, sufix, content):
-    target_file_name = source_file[0:source_file.rfind(".")] + sufix
-    print("Saving {}".format(target_file_name))
-    with codecs.open(target_file_name, "w", "utf-8-sig") as output_file:
-        output_file.write(content)
-
-output.to_json()
+master_statement = MasterStatement()
+master_statement.add_data(data)
+master_statement.process_data()
 
 if "--debug" in sys.argv:
-    save_target_file(source_file, "_processed.json", output.to_json())
-    save_target_file(source_file, "_mensal.csv", output.to_csv_mensal())
-    save_target_file(source_file, "_grouped.csv", output.to_csv_grouped())
+    save_target_file(source_file, "_processed.json", master_statement.output.to_json())
+    save_target_file(source_file, "_mensal.csv", master_statement.output.to_csv_mensal())
+    save_target_file(source_file, "_grouped.csv", master_statement.output.to_csv_grouped())
 # output.to_xlsx_mensal(source_file, "_mensal.xlsx")
 # output.to_xlsx_grouped(source_file, "_grouped.xlsx")
-output.to_xlsx(source_file)
+master_statement.output.to_xlsx(source_file)
 
 print("Done")
 
