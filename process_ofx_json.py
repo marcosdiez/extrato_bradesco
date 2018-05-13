@@ -147,6 +147,7 @@ class StatementItem(object):
         #     "MEMO": "BAIXA AUTOMATICA FUNDOS"
         # },
         self.stmtrn = stmtrn
+        self.id = stmtrn["FITID"]
         self.trn_type = stmtrn["TRNTYPE"]
         self.date = self.parse_ofx_date(stmtrn["DTPOSTED"])
         self.amount = self.parse_ofx_currency(stmtrn["TRNAMT"])
@@ -155,6 +156,9 @@ class StatementItem(object):
 
         self._normalize_ofx()
         self._validate()
+
+    def __repr__(self):
+        return "StatementItem({}/{}/{}/{})".format(self.trn_type, self.date, self.amount, self.memo)
 
     def _normalize_ofx(self):
         #sicoob
@@ -382,7 +386,7 @@ class Statement(object):
             workbook.add_cell(header, workbook.title)
         workbook.newline()
 
-        for period_name in self.periods:
+        for period_name in sorted(self.periods):
             statement_period = self.periods[period_name]
             soma_credito = 0
             soma_debito = 0
@@ -518,13 +522,15 @@ class MasterStatement(object):
         }
         self.output = None
         self.bank_account_from = None
+        self.statement_ids = {}
 
     def add_data(self, data):
         self._assert_same_bank_account(data)
 
-        self.output = Statement(data["BANKACCTFROM"]["BANKID"],
-                           data["BANKACCTFROM"]["ACCTID"],
-                           data["BANKACCTFROM"]["ACCTTYPE"])
+        if self.output is None:
+            self.output = Statement(data["BANKACCTFROM"]["BANKID"],
+                               data["BANKACCTFROM"]["ACCTID"],
+                               data["BANKACCTFROM"]["ACCTTYPE"])
         statements = data["BANKTRANLIST"]["STMTTRN"]
         for item in statements:
             memo = item["_original_name"] = item["MEMO"]
@@ -544,9 +550,15 @@ class MasterStatement(object):
 
             # this also parses the data
             statement_item = StatementItem(item)
+            if statement_item.id in self.statement_ids:
+                print("Warning: ignoring repeated element {}".format(statement_item))
+                continue
+            else:
+                self.statement_ids[statement_item.id] = None
             self.inputs["TRNTYPE"][statement_item.trn_type] += 1
             self.inputs["MEMO_{}".format(statement_item.trn_type)][statement_item.memo] += 1
 
+            # print(statement_item)
             self.output.add_statement_item(statement_item)
             # print(x.get_period())
 
@@ -566,46 +578,53 @@ class MasterStatement(object):
                             self.bank_account_from[key],
                             target.get(key, None)))
 
+def _fix_ofxjson(data2):
+    data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]
+
+    if data.__class__ == [].__class__:
+        # sometimes there are more bank accounts in the OFX
+        data = data[0]
+    data = data["STMTRS"]
+
+    if data["BANKTRANLIST"]["STMTTRN"].__class__ != [].__class__:
+        # we don't want to use instanceof here
+        # this is the case where there is only one entry in the statement
+        data["BANKTRANLIST"]["STMTTRN"] = [data["BANKTRANLIST"]["STMTTRN"]]
+    return data
 
 if len(sys.argv) < 2:
     print("usage: {} SOURCE_OFX_FILES [--debug]")
     sys.exit(1)
 
-source_file = sys.argv[1]
+# if not os.path.isfile(source_file):
+#     print("usage: {} SOURCE_JSON_FILE")
+#     sys.exit(1)
 
-if not os.path.isfile(source_file):
-    print("usage: {} SOURCE_JSON_FILE")
-    sys.exit(1)
-
-print("Opening {}".format(source_file))
-
-data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
-
-if "--debug" in sys.argv:
-    save_target_file(source_file, ".json", json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
-
-data = data2["OFX"]["BANKMSGSRSV1"]["STMTTRNRS"]
-
-if data.__class__ == [].__class__:
-    data = data[0]
-data = data["STMTRS"]
-
-if data["BANKTRANLIST"]["STMTTRN"].__class__ != [].__class__:
-    # we don't want to use instanceof here
-    # this is the case where there is only one entry in the statement
-    data["BANKTRANLIST"]["STMTTRN"] = [ data["BANKTRANLIST"]["STMTTRN"] ]
+debug_mode = "--debug" in sys.argv
 
 master_statement = MasterStatement()
-master_statement.add_data(data)
+target_file_name = None
+for source_file in sys.argv[1:]:
+    if source_file == "--debug":
+        continue
+    target_file_name = source_file
+    print("Opening {}".format(source_file))
+    data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(codecs.open(source_file, 'r', 'iso-8859-1'))
+    if debug_mode:
+        save_target_file(source_file, ".json", json.dumps(data2, sort_keys=True, indent=2, cls=MyEncoder))
+
+    data = _fix_ofxjson(data2)
+    master_statement.add_data(data)
+
 master_statement.process_data()
 
 if "--debug" in sys.argv:
-    save_target_file(source_file, "_processed.json", master_statement.output.to_json())
-    save_target_file(source_file, "_mensal.csv", master_statement.output.to_csv_mensal())
-    save_target_file(source_file, "_grouped.csv", master_statement.output.to_csv_grouped())
+    save_target_file(target_file_name, "_processed.json", master_statement.output.to_json())
+    save_target_file(target_file_name, "_mensal.csv", master_statement.output.to_csv_mensal())
+    save_target_file(target_file_name, "_grouped.csv", master_statement.output.to_csv_grouped())
 # output.to_xlsx_mensal(source_file, "_mensal.xlsx")
 # output.to_xlsx_grouped(source_file, "_grouped.xlsx")
-master_statement.output.to_xlsx(source_file)
+master_statement.output.to_xlsx(target_file_name)
 
 print("Done")
 
