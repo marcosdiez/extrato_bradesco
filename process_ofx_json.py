@@ -403,8 +403,7 @@ class Statement(object):
                 soma_credito += statement_memo.total
 
                 workbook.add_cell(period_name)
-                if statement_memo.count > 1:
-                    workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
                 workbook.add_cell(name)  # descricao
                 workbook.add_cell(statement_memo.count)  # quantidade
                 workbook.add_cell(statement_memo.total, workbook.money)  # credito
@@ -418,8 +417,7 @@ class Statement(object):
                 percent_value = statement_memo.total / soma_debito
 
                 workbook.add_cell(period_name)
-                if statement_memo.count > 1:
-                    workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+                workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
                 workbook.add_cell(name)  # descricao
                 workbook.add_cell(statement_memo.count)  # quantidade
                 workbook.cell_skip()
