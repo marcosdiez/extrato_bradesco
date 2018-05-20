@@ -39,7 +39,20 @@ memos_to_only_care_about_the_prefix = [
     "TAR COMANDADA COBRANCA",
     "TARIFA REGISTRO COBRANCA",
     "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO",
-    "Saque c/c Bdn"
+    "Saque c/c Bdn",
+
+    "PAGTO ELETRON  COBRANCA AMF",
+    "PAGTO ELETRON  COBRANCA ATLAS",
+    "PAGTO ELETRON  COBRANCA AWD",
+    "PAGTO ELETRON  COBRANCA DSAMARA",
+    "PAGTO ELETRON  COBRANCA FAP PISCINAS",
+    "PAGTO ELETRON  COBRANCA GD JARDI",
+    "PAGTO ELETRON  COBRANCA JB BOMBAS",
+    "PAGTO ELETRON  COBRANCA LIMPEZA",
+    "PAGTO ELETRON  COBRANCA NOFIRE",
+    "PAGTO ELETRON  COBRANCA SIMONE",
+    "TRANSF FDOS DOC-E H BANK DEST.meire vania",
+
     ]
 
 memos_to_replace = {
@@ -58,6 +71,19 @@ memos_to_replace = {
     "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADOR": "GASTO COM FUNCIONARIO",
     "PAGTO ELETRONICO TRIBUTO INTERNET --FGTS/GRF S/TOMADO": "GASTO COM FUNCIONARIO",
 
+    "PAGTO ELETRON  COBRANCA MENSALIDADE ADM": "PAGTO ELETRON  COBRANCA AMF",
+    "PAGTO ELETRON  COBRANCA MENSALIDADE AM": "PAGTO ELETRON  COBRANCA AMF",
+    "PAGTO ELETRON  COBRANCA MENSALIDADE AMF": "PAGTO ELETRON  COBRANCA AMF",
+    "PAGTO ELETRON  COBRANCA MENSALIDADE AMFIGUEIREDO": "PAGTO ELETRON  COBRANCA AMF",
+
+    "PAGTO ELETRON  COBRANCA D SAMARA NF 5145": "PAGTO ELETRON  COBRANCA DSAMARA",
+    "PAGTO ELETRON  COBRANCA GD NFS 2209 E 1382": "PAGTO ELETRON  COBRANCA GD JARDI",
+    "PAGTO ELETRON  COBRANCA GF JARDIM REFORMA 03-01": "PAGTO ELETRON  COBRANCA GD JARDI",
+
+    "PAGTO ELETRON  COBRANCA JBBOMBAS NF7735": "PAGTO ELETRON  COBRANCA JB BOMBAS",
+    "PAGTO ELETRON  COBRANCA JD BOMBAS NF7927": "PAGTO ELETRON  COBRANCA JB BOMBAS",
+    "PAGTO ELETRON  COBRANCA JDBOMBAS NF8404": "PAGTO ELETRON  COBRANCA JB BOMBAS",
+
     "PAGTO ELETRONICO TRIBUTO INTERNET --PMSP SP": "IPTU",
 
     "TRANSF CC PARA CC PJ ZITA DE OLIVEIRA PENNA" : "SINDICO",
@@ -72,8 +98,24 @@ memos_to_replace = {
     "TARIFA REGISTRO COBRANCA" : "GASTOS BANCARIOS",
     "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO": "GASTOS BANCARIOS",
 
-    "LIQUIDACAO DE COBRANCA VALOR DISPONIVEL" : "LIQUIDACAO DE COBRANCA Valor Disponivel"
+    "LIQUIDACAO DE COBRANCA VALOR DISPONIVEL" : "LIQUIDACAO DE COBRANCA Valor Disponivel",
+    "PAGTO ELETRON  COBRANCA MENSALIDADE JB BOMBAS 09 2017": "PAGTO ELETRON  COBRANCA JB BOMBAS",
+    "PAGTO ELETRON  COBRANCA JD JARDIM NF 2147 NOVEMBRO": "PAGTO ELETRON  COBRANCA GD JARDI",
 
+    "PAGTO ELETRON  COBRANCA LIMPEZA" :"PAGTO ELETRON  COBRANCA SIMONE",
+    "PAGTO ELETRON  COBRANCA NF977 PROD LIMPEZA SIMONE MOMJIA": "PAGTO ELETRON  COBRANCA SIMONE",
+    "PAGTO ELETRON  COBRANCA PRODUTOS LIMPEZA NF 944":"PAGTO ELETRON  COBRANCA SIMONE",
+    "TRANSF CC PARA CC PJ SIMONE MOMJIAN DE MENEZES ME":"PAGTO ELETRON  COBRANCA SIMONE",
+
+    "PAGTO ELETRON  COBRANCA ELEVADOR ATLAS SCHINDLER": "PAGTO ELETRON  COBRANCA ATLAS",
+    "PAGTO ELETRON  COBRANCA SCHINDLER JULHO": "PAGTO ELETRON  COBRANCA ATLAS",
+    "TRANSF FDOS DOC-E H BANK DEST.a m figueiredo administraca": "PAGTO ELETRON  COBRANCA AMF",
+    "TRANSF FDOS DOC-E H BANK DEST.Alberto Pletitsch Figueired": "PAGTO ELETRON  COBRANCA AMF",
+
+    "TRANSF FDOS DOC-E H BANK DEST.GD Jardinagem": "PAGTO ELETRON  COBRANCA GD JARDI",
+    "TRANSF FDOS DOC-E H BANK DEST.San Matheus Portas Automáti" : "TRANSF FDOS DOC-E H BANK DEST.san matheus portas automati",
+    "TRANSF FDOS DOC-E H BANK DEST.Paulo Rodrigues do Nascimen" : "TED DIF.TITUL.CC H.BANK DEST. Paulo Rodrigues do N",
+    "TED DIF.TITUL.CC H.BANK DEST. nova samuca materias" : "TRANSF FDOS DOC-E H BANK DEST.nova samuca materias para c",
 }
 
 class OrderedDefaultdict(collections.OrderedDict):
@@ -297,6 +339,11 @@ class XlsxHelper(object):
             self.comment_format["height"] = self.comment_format_line_size * lines
             self.worksheet.write_comment(self.row, self.col, comment, self.comment_format)
 
+    def write(self, row, col, *param):
+        self.row = row
+        self.col = col
+        self.worksheet.write(row, col, *param)
+
     def add_cell(self, *param):
         self.worksheet.write(self.row, self.col, *param)
         self.col += 1
@@ -318,6 +365,7 @@ class Statement(object):
         self.periods = OrderedDefaultdict(StatementPeriod)
         self.first_statement = None
         self.last_statement = None
+        self.description_per_month = defaultdict(lambda: defaultdict(list))
 
     def add_statement_item(self, item):
         self.total.add_statement_item(item)
@@ -341,6 +389,53 @@ class Statement(object):
             self.to_xlsx_grouped(workbook, target_file_name)
             print("Adding mensal...")
             self.to_xlsx_mensal(workbook)
+            print("Adding item_view")
+            self.to_xls_per_item(workbook)
+
+    def to_xls_per_item(self, workbook):
+        workbook.add_worksheet("por_item")
+        workbook.worksheet.set_column(0, 0, 70)
+        workbook.worksheet.set_column(1, len(self.periods), 12)
+        workbook.add_cell("descrição", workbook.bold)
+        column_counter = 1
+        row_counter = 1
+        column_per_period = {}
+        row_per_description = {}
+        for period in sorted(self.periods.keys()):
+            workbook.add_cell(period, workbook.bold)
+            column_per_period[period] = column_counter
+            column_counter += 1
+
+        for description in sorted(self.description_per_month.keys()):
+            desc = self.description_per_month[description]
+            if desc[list(desc.keys())[0]][0].amount > 0:
+                workbook.write(row_counter, 0, description)
+                row_per_description[description] = row_counter
+                row_counter += 1
+
+        row_counter += 1
+
+        for description in sorted(self.description_per_month.keys()):
+            desc = self.description_per_month[description]
+            if desc[list(desc.keys())[0]][0].amount < 0:
+                workbook.write(row_counter, 0, description)
+                row_per_description[description] = row_counter
+                row_counter += 1
+
+        for description in self.description_per_month.keys():
+            row_desc = row_per_description[description]
+            for period in self.description_per_month[description].keys():
+                value = 0
+                for statement_item in self.description_per_month[description][period]:
+                    value += statement_item.amount
+                workbook.write(row_desc, column_per_period[period], value, workbook.money)
+                if statement_item.amount > 0:
+                    statement_memo = self.periods[period].credits[description]
+                else:
+                    statement_memo = self.periods[period].debits[description]
+
+                workbook.add_comment(statement_memo.make_notes(), statement_memo.count)
+
 
     def to_xlsx_grouped(self, workbook , target_file_name):
         def set_printing_options():
@@ -529,6 +624,7 @@ class MasterStatement(object):
         self.bank_account_from = None
         self.statement_ids = {}
 
+
     def add_data(self, data):
         self._assert_same_bank_account(data)
 
@@ -536,6 +632,7 @@ class MasterStatement(object):
             self.output = Statement(data["BANKACCTFROM"]["BANKID"],
                                data["BANKACCTFROM"]["ACCTID"],
                                data["BANKACCTFROM"]["ACCTTYPE"])
+
         statements = data["BANKTRANLIST"]["STMTTRN"]
         for item in statements:
             memo = item["_original_name"] = item["MEMO"]
@@ -574,6 +671,8 @@ class MasterStatement(object):
             # print(statement_item)
             self.output.add_statement_item(statement_item)
             # print(x.get_period())
+
+            self.output.description_per_month[statement_item.memo][statement_item.get_period()].append(statement_item)
 
     def process_data(self):
         self.output.to_json()
