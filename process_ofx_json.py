@@ -8,6 +8,7 @@ import json
 import sys
 import datetime
 import codecs
+import hashlib
 
 import ofx_bradesco_to_json
 
@@ -52,7 +53,7 @@ memos_to_only_care_about_the_prefix = [
     "PAGTO ELETRON  COBRANCA NOFIRE",
     "PAGTO ELETRON  COBRANCA SIMONE",
     "TRANSF FDOS DOC-E H BANK DEST.meire vania",
-
+    "CHEQUE"
     ]
 
 memos_to_replace = {
@@ -97,6 +98,7 @@ memos_to_replace = {
     "TAR COMANDADA COBRANCA" : "GASTOS BANCARIOS",
     "TARIFA REGISTRO COBRANCA" : "GASTOS BANCARIOS",
     "TARIFA AUTORIZ COBRANCA TIT.BX.DECURSO PRAZO": "GASTOS BANCARIOS",
+    "TARIFA BANCARIA Max Empresarial 2": "GASTOS BANCARIOS",
 
     "LIQUIDACAO DE COBRANCA VALOR DISPONIVEL" : "LIQUIDACAO DE COBRANCA Valor Disponivel",
     "PAGTO ELETRON  COBRANCA MENSALIDADE JB BOMBAS 09 2017": "PAGTO ELETRON  COBRANCA JB BOMBAS",
@@ -189,15 +191,34 @@ class StatementItem(object):
         #     "MEMO": "BAIXA AUTOMATICA FUNDOS"
         # },
         self.stmtrn = stmtrn
-        self.id = stmtrn["FITID"]
+
         self.trn_type = stmtrn["TRNTYPE"]
         self.date = self.parse_ofx_date(stmtrn["DTPOSTED"])
         self.amount = self.parse_ofx_currency(stmtrn["TRNAMT"])
         self.memo = stmtrn["MEMO"]
         self.original_name = stmtrn["_original_name"]
-
+        # self.id = stmtrn["FITID"]
+        self.id = self._make_id()
         self._normalize_ofx()
         self._validate()
+
+    def md5(self, value):
+        h = hashlib.md5()
+        h.update(value.encode('utf-8'))
+        return h.hexdigest()
+        # >> > from hashlib import blake2b
+        # >> > h = blake2b()
+        # >> > h.update(b'Hello world')
+        # >> > h.hexdigest()
+
+    def _make_id(self):
+        #bradesco lies and dublicates IDs...
+        return self.md5("{}/{}/{}/{}".format(
+            self.stmtrn["TRNTYPE"],
+            self.stmtrn["DTPOSTED"],
+            self.stmtrn["TRNAMT"],
+            self.stmtrn["_original_name"],
+        ))
 
     def __eq__(self, other):
         return self.id == other.id and \
@@ -536,7 +557,7 @@ class Statement(object):
     def to_xlsx_mensal(self, workbook):
         workbook.add_worksheet("mensal")
         workbook.worksheet.set_column(0, 4, 12)
-        for header in ["periodo", "entrada", "saida", "delta"]:
+        for header in ["período", "entrada", "saída", "diferença"]:
             workbook.add_cell(header, workbook.bold)
 
         workbook.newline()
