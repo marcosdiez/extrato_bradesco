@@ -13,7 +13,7 @@ def yield_every_char_from_file(filename):
 
 
 uninteresting_chars = ["\n", "\t", "\r"]
-tags_that_must_be_lists = ["STMTTRN", "/STMTTRN"]
+tags_that_must_be_lists = ["STMTTRN"]
 
 def dumper(obj):
     print(json.dumps(obj, sort_keys=False, indent=2))
@@ -60,12 +60,10 @@ def process_ofx(filename):
         if char == ">":
             if current_string.startswith("/"):
                 value_mode = False
-                # print(f"---- {current_string} {previsous_string}")
-
                 previsous_string = current_string
                 current_string = ""
                 tag_stack.pop()
-                if previsous_string in tags_that_must_be_lists:
+                if previsous_string[1:] in tags_that_must_be_lists:
                     tag_stack.pop()
             else:
                 tag_stack.append(current_string)
