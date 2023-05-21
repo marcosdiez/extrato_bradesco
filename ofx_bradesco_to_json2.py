@@ -38,7 +38,6 @@ TAG_TYPE_STRING = "TAG_TYPE_STRING"
 def process_ofx(filename):
     tag_stack = []
     next_char = None
-    last_string = None
     current_string = ""
     value_mode = False
     for _char in yield_every_char_from_file(filename):
@@ -54,10 +53,10 @@ def process_ofx(filename):
         if char == "<":
             if value_mode:
                 value = current_string
-                print(value)
+                print(f"{tag_stack} = {value}")
+                # print(value)
                 tag_stack.pop()
             # print(f"OPEN_TAG " , end = "")
-            last_string = current_string
             current_string = ""
             continue
 
@@ -71,7 +70,7 @@ def process_ofx(filename):
                 tag_stack.pop()
             else:
                 tag_stack.append(current_string)
-                print(tag_stack)
+                # print(tag_stack)
                 value_mode = next_char != "<"
                 current_string = ""
                 # print(f"CLOSE_TAG {current_string}")
