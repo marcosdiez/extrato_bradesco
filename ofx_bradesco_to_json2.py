@@ -13,7 +13,11 @@ def yield_every_char_from_file(filename):
 
 uninteresting_chars = ["\n", "\t", "\r"]
 
+def add_to_result(result, tag_stack, value):
+    print(f"{tag_stack} = {value}")
+
 def process_ofx(filename):
+    result = {}
     tag_stack = []
     next_char = None
     current_string = ""
@@ -31,7 +35,7 @@ def process_ofx(filename):
         if char == "<":
             if value_mode:
                 value = current_string
-                print(f"{tag_stack} = {value}")
+                add_to_result(result, tag_stack, value)
                 tag_stack.pop()
             current_string = ""
             continue
