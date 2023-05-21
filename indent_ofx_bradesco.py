@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import os
 import sys
 
@@ -29,9 +29,10 @@ def parse_line(line):
         return LINE_SINGLE_LINE_TAG
     return LINE_OTHER
 
-if not os.path.isfile(sys.argv[1]):
-    print("usage: {sys.argv[0]} file_to_be_indented.ofx")
+if len(sys.argv) < 2 or not os.path.isfile(sys.argv[1]):
+    print(f"usage: {sys.argv[0]} file_to_be_indented.ofx")
     sys.exit(1)
+
 
 with open(sys.argv[1], "r") as input_file:
     with open(sys.argv[1][0:-4] + "_indent.ofx", "w") as output_file:
