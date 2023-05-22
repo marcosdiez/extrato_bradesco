@@ -4,6 +4,10 @@ import json
 import os
 
 
+uninteresting_chars = ["\n", "\t", "\r"]
+tags_that_must_be_lists = ["STMTTRN"]
+
+
 def yield_every_char_from_file(filename):
     with open(filename) as stream:
         while True:
@@ -11,10 +15,6 @@ def yield_every_char_from_file(filename):
             if not char:
                 break
             yield char
-
-
-uninteresting_chars = ["\n", "\t", "\r"]
-tags_that_must_be_lists = ["STMTTRN"]
 
 
 def dumper(obj):
@@ -38,14 +38,14 @@ def fix_stmtrn(result):
     ]
     new_stmttrn = []
 
-    for key, value in bank_trans_list["STMTTRN"].items():
+    for _, value in bank_trans_list["STMTTRN"].items():
         new_stmttrn.append(value)
 
     bank_trans_list["STMTTRN"] = new_stmttrn
     return result
 
 
-def process_ofx(filename):
+def ofx_bradesco_to_json(filename):
     counter = 0
     result = {"_header": {}}
     tag_stack = []
@@ -116,31 +116,32 @@ def process_ofx(filename):
                     current_string = ""
                 continue
             current_string += char
+    result = fix_stmtrn(result)
     return result
 
 
-def _get_target_filename(input_file_name):
-    if len(sys.argv) <= 2:
+def _get_target_filename(input_file_name, ignore_sysargv):
+    if ignore_sysargv or len(sys.argv) <= 2:
         return input_file_name[0 : input_file_name.rfind(".")] + ".json"
     else:
         return sys.argv[2]
 
 
+def save_output_to_disk(input_filename, result, ignore_sysargv=False):
+    output_filename = _get_target_filename(input_filename, ignore_sysargv)
+    with open(output_filename, "w") as output_file:
+        json.dump(result, output_file, indent=2, ensure_ascii=False)
+    print(f"{input_filename} saved to {output_filename}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2 or not os.path.isfile(sys.argv[1]):
         print(
-            "usage: {} ofx_to_become_a_json.ofx [optional_output_name.json]".format(
-                sys.argv[0]
-            )
+            f"usage: {sys.argv[0]} ofx_to_become_a_json.ofx [optional_output_name.json]"
         )
         sys.exit(1)
 
     input_filename = sys.argv[1]
-    result = process_ofx(input_filename)
+    result = ofx_bradesco_to_json(input_filename)
     # dumper(result)
-    result = fix_stmtrn(result)
-
-    output_filename = _get_target_filename(input_filename)
-    with open(output_filename, "w") as output_file:
-        json.dump(result, output_file, indent=2, ensure_ascii=False)
-    print("{} saved to {}".format(input_filename, output_filename))
+    save_output_to_disk(input_filename, result)

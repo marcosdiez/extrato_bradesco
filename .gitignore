@@ -1,3 +1,5 @@
 *.json
 *.ofx
 *.csv
+*.xlsx
+__pycache__/
