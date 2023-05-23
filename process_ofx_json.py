@@ -228,7 +228,7 @@ class StatementItem(object):
         # intermedium
         if self.trn_type == "C":
             self.trn_type = "CREDIT"
-        if self.trn_type == "D":
+        if self.trn_type in ["D", "PAYMENT"]:
             self.trn_type = "DEBIT"
 
     def _validate(self):
