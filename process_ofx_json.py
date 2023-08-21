@@ -403,6 +403,49 @@ class Statement(object):
             self.to_xlsx_mensal(workbook)
             print("Adding item_view")
             self.to_xls_per_item(workbook)
+            print("Adding Fornecedores")
+            self.to_xls_fornecedores(workbook)
+
+    def to_xls_fornecedores(self, workbook):
+        def make_key(elem):
+            return f"{elem.memo}-{elem.date}"
+
+        workbook.add_worksheet("fornecedores")
+        worksheet = workbook.worksheet
+        worksheet.set_column(4, 4, 80)
+        worksheet.set_column(5, 5, 10)
+        worksheet.set_column(6, 6, 20)
+
+        for header in ["Nº Nfe do Fornecedor", "Link", "CNPJ", "Nome do Fornecedor", "Descricao", "Data", "Valor", "Como Paguei"]:
+            workbook.add_cell(header, workbook.title)
+        workbook.newline()
+
+        items = []
+
+        for period_name in sorted(self.periods):
+            statement_period = self.periods[period_name]
+            for name in sorted(statement_period.debits):
+                for item in statement_period.debits[name].items:
+                    items.append(item)
+
+        items.sort(key=make_key)
+
+        last_memo = None
+        for item in items:
+
+            if last_memo != item.memo:
+                last_memo = item.memo
+                workbook.newline()
+                workbook.add_cell(item.memo,  workbook.bold)
+                workbook.newline()
+            workbook.add_cell("")
+            workbook.add_cell("")
+            workbook.add_cell("")
+            workbook.add_cell("")
+            workbook.add_cell(item.memo)
+            workbook.add_cell(item.date.split(" ")[0])
+            workbook.add_cell(item.amount, workbook.money)
+            workbook.newline()
 
     def to_xls_per_item(self, workbook):
         workbook.add_worksheet("por_item")
@@ -727,7 +770,8 @@ class MasterStatement(object):
             statement_item = StatementItem(item)
             if statement_item.id in self.statement_ids:
                 if statement_item == self.statement_ids[statement_item.id]:
-                    print("Ignoring repeated {}".format(statement_item))
+                    pass
+                    # print("Ignoring repeated {}".format(statement_item))
                 else:
                     print(
                         "ERROR: Invalid OFX. Two different items with the same key:\n\t{}\n\t{}".format(
