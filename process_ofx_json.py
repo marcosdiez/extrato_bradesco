@@ -11,6 +11,7 @@ import hashlib
 import xlsxwriter
 from json import JSONEncoder
 import ofx_bradesco_to_json2
+import ofx_bradesco_to_json
 
 memos_to_ignore = [
     "Baixa Automatica Fundos",
@@ -857,11 +858,15 @@ for source_file in sys.argv[1:]:
         with open(source_file) as stream:
             data2 = json.load(stream)
     else:
-        data2 = ofx_bradesco_to_json2.ofx_bradesco_to_json(source_file)
-        if debug_mode:
-            ofx_bradesco_to_json2.save_output_to_disk(
-                source_file, data2, ignore_sysargv=True
-            )
+        try:
+            data2 = ofx_bradesco_to_json2.ofx_bradesco_to_json(source_file)
+            if debug_mode:
+                ofx_bradesco_to_json2.save_output_to_disk(
+                    source_file, data2, ignore_sysargv=True
+                )
+        except UnicodeDecodeError:
+            data2 = ofx_bradesco_to_json.ofx_bradesco_to_json(source_file)
+
 
     data = _fix_ofxjson(data2)
     if data is False:

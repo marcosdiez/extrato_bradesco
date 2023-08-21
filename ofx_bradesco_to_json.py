@@ -51,7 +51,7 @@ def _parse_line(line, current_state=None, current_tag=None):
         return LINE_SINGLE_LINE_TAG
     return LINE_OTHER
 
-def ofx_bradesco_to_json(input_file, debug=True):
+def ofx_bradesco_to_json2(input_file, debug=True):
     target_json = OrderedDict()
     target_json["_header"] = OrderedDict()
     dict_list = [target_json]
@@ -130,6 +130,10 @@ def _get_target_filename():
     else:
         return sys.argv[2]
 
+def ofx_bradesco_to_json(input_file_name):
+    with codecs.open(input_file_name, 'r', 'iso-8859-1') as input_file:
+        return ofx_bradesco_to_json2(input_file)
+
 if __name__ == "__main__":
     if len(sys.argv) < 2 or not os.path.isfile(sys.argv[1]):
         print("usage: {} ofx_to_become_a_json.ofx [converted_ofx.json]".format(sys.argv[0]))
@@ -137,8 +141,7 @@ if __name__ == "__main__":
 
     input_file_name = sys.argv[1]
 
-    with codecs.open(input_file_name, 'r', 'iso-8859-1') as input_file:
-        target_json = ofx_bradesco_to_json(input_file)
+    target_json = ofx_bradesco_to_json(input_file_name)
 
     target_filename = _get_target_filename()
     with codecs.open(target_filename, "w", "utf-8") as output_file:
